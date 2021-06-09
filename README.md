@@ -1,9 +1,9 @@
-#Welcome to the WSO2 Identity Server Token Exchange Grant Type for OAuth2. 
+# Welcome to the WSO2 Identity Server Token Exchange Grant Type for OAuth2. 
 
 This repository contains implementation for the OAuth 2.0 Token Exchange Grant, described in [spec](https://datatracker.ietf.org/doc/html/rfc8693).
 You can exchange external Identity Provider's token for the token issued by Identity Server. The initial implementation supports exchanging JWT type tokens.
 
-##How to test Token Exchange Grant Type:
+## How to test Token Exchange Grant Type:
 
 * Register an Identity Provider in WSO2 Identity Server with the configurations of the external Identity Provider.
 * Obtain an access token from external Identity Provider
