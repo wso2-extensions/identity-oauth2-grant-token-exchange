@@ -95,6 +95,8 @@ public class TokenExchangeGrantHandlerTest {
         String tenantDomain = "carbon.super";
         when(TokenExchangeUtils.getIdPByIssuer("https://localhost:9443/oauth2/token", tenantDomain))
                 .thenReturn(idp);
+        when(TokenExchangeUtils.getTokenEndpointAlias(idp, tenantDomain))
+                .thenReturn("7N7vQHZbJtPnzegtGXJvvwDL4wca");
         PowerMockito.doThrow(new IdentityOAuth2Exception("Signature Message Authentication invalid"))
                 .when(TokenExchangeUtils.class, "handleException", Mockito.anyString(),
                         Mockito.anyString());
