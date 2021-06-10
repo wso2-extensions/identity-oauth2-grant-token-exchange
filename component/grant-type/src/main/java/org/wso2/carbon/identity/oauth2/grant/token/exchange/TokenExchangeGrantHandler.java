@@ -43,6 +43,7 @@ import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -118,7 +119,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         IdentityProvider identityProvider = null;
         String tokenEndPointAlias = null;
         JWTClaimsSet claimsSet = null;
-        String resources = null;
+        String resource = null;
 
         RequestParameter[] params = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getRequestParameters();
         Map<String, String[]> requestParams = Arrays.stream(params).collect(Collectors.toMap(RequestParameter::getKey,
@@ -127,13 +128,13 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             requested_token_type = requestParams.get(TokenExchangeConstants.REQUESTED_TOKEN_TYPE)[0];
         }
         if(requestParams.get(TokenExchangeConstants.RESOURCES) != null) {
-            resources = requestParams.get(TokenExchangeConstants.RESOURCES)[0];
+            resource = requestParams.get(TokenExchangeConstants.RESOURCES)[0];
+        }
+        tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
+        if (StringUtils.isEmpty(tenantDomain)) {
+            tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
         }
         if (TokenExchangeConstants.JWT_TOKEN_TYPE.equals(requested_token_type)) {
-            tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
-            if (StringUtils.isEmpty(tenantDomain)) {
-                tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
-            }
             signedJWT = TokenExchangeUtils.getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN)[0]);
             if (signedJWT == null) {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for "
@@ -154,7 +155,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             tokReqMsgCtx.addProperty(TokenExchangeConstants.EXPIRY_TIME, expirationTime);
             Date notBeforeTime = claimsSet.getNotBeforeTime();
             Date issuedAtTime = claimsSet.getIssueTime();
-            Map<String, Object> customClaims = claimsSet.getClaims();
+            Map<String, Object> customClaims = new HashMap<>(claimsSet.getClaims());
             boolean signatureValid;
             boolean audienceFound;
             boolean resourceValid;
@@ -163,8 +164,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
             if (StringUtils.isEmpty(jwtIssuer) || StringUtils.isEmpty(subject) || expirationTime == null ||
                     audience == null) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory fields(Issuer, Subject, Expiration time or" +
-                        " Audience) are empty in the given JSON Web Token.");
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory fields(Issuer, Subject, Expiration time " +
+                        "or Audience) are empty in the given JWT");
             }
             identityProvider = TokenExchangeUtils.getIdPByIssuer(jwtIssuer, tenantDomain);
             tokenEndPointAlias = TokenExchangeUtils.getTokenEndpointAlias(identityProvider, tenantDomain);
@@ -181,7 +182,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             } catch (JOSEException e) {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature");
             }
-            TokenExchangeUtils.setAuthorizedUser(tokReqMsgCtx, identityProvider, subject);
 
             log.debug("Subject(sub) found in JWT: " + subject);
             log.debug(subject + " set as the Authorized User.");
@@ -197,11 +197,15 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 handleException(TokenExchangeConstants.INVALID_TARGET, "None of the audience values matched the " +
                         "tokenEndpoint Alias " + tokenEndPointAlias);
             }
-            resourceValid = validateResources(resources);
+            resourceValid = validateResources(resource);
             if (!resourceValid) {
                 handleException(TokenExchangeConstants.INVALID_TARGET, "None of the audience values matched the " +
                         "tokenEndpoint Alias " + tokenEndPointAlias);
             }
+            if (StringUtils.isNotEmpty(resource) && resourceValid) {
+                subject = resource;
+            }
+            TokenExchangeUtils.setAuthorizedUser(tokReqMsgCtx, identityProvider, subject);
             boolean checkedExpirationTime = TokenExchangeUtils.checkExpirationTime(expirationTime, currentTimeInMillis,
                     timeStampSkewMillis);
             if (checkedExpirationTime) {
@@ -227,7 +231,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                     log.debug("Issued At Time(iat) of JWT was validated successfully.");
                 }
             }
-            boolean customClaimsValidated = validateCustomClaims(claimsSet.getClaims());
+            boolean customClaimsValidated = validateCustomClaims(customClaims);
             if (!customClaimsValidated) {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Custom Claims in the JWT were invalid");
             }
