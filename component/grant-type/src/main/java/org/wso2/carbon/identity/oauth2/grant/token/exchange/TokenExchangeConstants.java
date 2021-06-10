@@ -40,6 +40,6 @@ public class TokenExchangeConstants {
     static final String REGISTERED_CLAIMS = "OAuth.TokenExchangeGrant.RegisteredClaim";
     static final String TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
     static final String EXPIRY_TIME = "EXPIRY_TIME_JWT";
-    static final String RESOURCES = "resources";
+    static final String AUDIENCE = "audience";
     static final String INVALID_TARGET = "invalid_target";
 }

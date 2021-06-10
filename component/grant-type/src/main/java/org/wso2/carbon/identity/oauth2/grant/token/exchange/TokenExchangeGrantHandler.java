@@ -59,22 +59,21 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private int validityPeriod;
     private boolean validateIAT = true;
     private String[] registeredClaimNames = new String[]{"iss", "sub", "aud", "exp", "nbf", "iat", "jti"};
-    private String tenantDomain;
     private String requested_token_type = TokenExchangeConstants.JWT_TOKEN_TYPE;
 
     @Override
     public void init() throws IdentityOAuth2Exception {
         super.init();
 
-        /**
-         * From identity.xml following configs are read.
-         *
-         * <OAuth>
-         *     <TokenExchangeGrant>
-         *         <EnableIATValidation>true</EnableIATValidation>
-         *         <IATValidityPeriod>30</IATValidityPeriod>
-         *     </TokenExchangeGrant>
-         * </OAuth>
+        /*
+          From identity.xml following configs are read.
+
+          <OAuth>
+              <TokenExchangeGrant>
+                  <EnableIATValidation>true</EnableIATValidation>
+                  <IATValidityPeriod>30</IATValidityPeriod>
+              </TokenExchangeGrant>
+          </OAuth>
          */
 
         String validateIATProp = IdentityUtil.getProperty(TokenExchangeConstants.PROP_ENABLE_IAT_VALIDATION);
@@ -115,11 +114,12 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
     @Override
     public boolean validateGrant(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
-        SignedJWT signedJWT = null;
-        IdentityProvider identityProvider = null;
-        String tokenEndPointAlias = null;
+        SignedJWT signedJWT;
+        IdentityProvider identityProvider;
+        String tokenEndPointAlias;
         JWTClaimsSet claimsSet = null;
-        String resource = null;
+        String requested_audience = null;
+        boolean audienceFound;
 
         RequestParameter[] params = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getRequestParameters();
         Map<String, String[]> requestParams = Arrays.stream(params).collect(Collectors.toMap(RequestParameter::getKey,
@@ -127,10 +127,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         if (requestParams.get(TokenExchangeConstants.REQUESTED_TOKEN_TYPE) != null) {
             requested_token_type = requestParams.get(TokenExchangeConstants.REQUESTED_TOKEN_TYPE)[0];
         }
-        if(requestParams.get(TokenExchangeConstants.RESOURCES) != null) {
-            resource = requestParams.get(TokenExchangeConstants.RESOURCES)[0];
+        if(requestParams.get(TokenExchangeConstants.AUDIENCE) != null) {
+            requested_audience = requestParams.get(TokenExchangeConstants.AUDIENCE)[0];
         }
-        tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
+        String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
         if (StringUtils.isEmpty(tenantDomain)) {
             tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
         }
@@ -149,30 +149,26 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
             String jwtIssuer = claimsSet.getIssuer();
             String subject = resolveSubject(claimsSet);
-            List<String> audience = claimsSet.getAudience();
+            List<String> audiences = claimsSet.getAudience();
             Date expirationTime = claimsSet.getExpirationTime();
-
-            tokReqMsgCtx.addProperty(TokenExchangeConstants.EXPIRY_TIME, expirationTime);
             Date notBeforeTime = claimsSet.getNotBeforeTime();
             Date issuedAtTime = claimsSet.getIssueTime();
             Map<String, Object> customClaims = new HashMap<>(claimsSet.getClaims());
-            boolean signatureValid;
-            boolean audienceFound;
-            boolean resourceValid;
+
+            tokReqMsgCtx.addProperty(TokenExchangeConstants.EXPIRY_TIME, expirationTime);
             long currentTimeInMillis = System.currentTimeMillis();
             long timeStampSkewMillis = OAuthServerConfiguration.getInstance().getTimeStampSkewInSeconds() * 1000;
 
             if (StringUtils.isEmpty(jwtIssuer) || StringUtils.isEmpty(subject) || expirationTime == null ||
-                    audience == null) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory fields(Issuer, Subject, Expiration time " +
-                        "or Audience) are empty in the given JWT");
+                    audiences == null) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory fields(Issuer, Subject, Expiration time "
+                        + "or Audience) are empty in the given JWT");
             }
             identityProvider = TokenExchangeUtils.getIdPByIssuer(jwtIssuer, tenantDomain);
             tokenEndPointAlias = TokenExchangeUtils.getTokenEndpointAlias(identityProvider, tenantDomain);
             try {
                 if (signedJWT != null) {
-                    signatureValid = TokenExchangeUtils.validateSignature(signedJWT, identityProvider, tenantDomain);
-                    if (signatureValid) {
+                    if (TokenExchangeUtils.validateSignature(signedJWT, identityProvider, tenantDomain)) {
                         log.debug("Signature/MAC validated successfully.");
                     } else {
                         handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication " +
@@ -182,6 +178,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             } catch (JOSEException e) {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature");
             }
+            TokenExchangeUtils.setAuthorizedUser(tokReqMsgCtx, identityProvider, subject);
 
             log.debug("Subject(sub) found in JWT: " + subject);
             log.debug(subject + " set as the Authorized User.");
@@ -192,44 +189,23 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                         "Provider has not been configured for " + identityProvider.getIdentityProviderName());
             }
 
-            audienceFound = validateAudience(audience, tokenEndPointAlias, StringUtils.EMPTY);
+            audienceFound = validateAudience(audiences, tokenEndPointAlias, requested_audience);
             if (!audienceFound) {
-                handleException(TokenExchangeConstants.INVALID_TARGET, "None of the audience values matched the " +
-                        "tokenEndpoint Alias " + tokenEndPointAlias);
+                handleException(TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
             }
-            resourceValid = validateResources(resource);
-            if (!resourceValid) {
-                handleException(TokenExchangeConstants.INVALID_TARGET, "None of the audience values matched the " +
-                        "tokenEndpoint Alias " + tokenEndPointAlias);
-            }
-            if (StringUtils.isNotEmpty(resource) && resourceValid) {
-                subject = resource;
-            }
-            TokenExchangeUtils.setAuthorizedUser(tokReqMsgCtx, identityProvider, subject);
-            boolean checkedExpirationTime = TokenExchangeUtils.checkExpirationTime(expirationTime, currentTimeInMillis,
-                    timeStampSkewMillis);
-            if (checkedExpirationTime) {
-                log.debug("Expiration Time(exp) of JWT was validated successfully.");
-            }
-            if (notBeforeTime == null) {
-                log.debug("Not Before Time(nbf) not found in JWT. Continuing Validation");
+            TokenExchangeUtils.checkExpirationTime(expirationTime, currentTimeInMillis, timeStampSkewMillis);
+            if (notBeforeTime != null) {
+                TokenExchangeUtils.checkNotBeforeTime(notBeforeTime, currentTimeInMillis, timeStampSkewMillis);
             } else {
-                boolean checkedNotBeforeTime = TokenExchangeUtils.checkNotBeforeTime(notBeforeTime, currentTimeInMillis,
-                        timeStampSkewMillis);
-                if (checkedNotBeforeTime) {
-                    log.debug("Not Before Time(nbf) of JWT was validated successfully.");
-                }
+                log.debug("Not Before Time(nbf) not found in JWT. Continuing Validation");
             }
             if (issuedAtTime == null) {
                 log.debug("Issued At Time(iat) not found in JWT. Continuing Validation");
             } else if (!validateIAT) {
                 log.debug("Issued At Time (iat) validation is disabled for the JWT");
             } else {
-                boolean checkedValidityToken = TokenExchangeUtils.checkValidityOfTheToken(issuedAtTime,
-                        currentTimeInMillis, timeStampSkewMillis, validityPeriod);
-                if (checkedValidityToken) {
-                    log.debug("Issued At Time(iat) of JWT was validated successfully.");
-                }
+                TokenExchangeUtils.checkValidityOfTheToken(issuedAtTime, currentTimeInMillis, timeStampSkewMillis,
+                        validityPeriod);
             }
             boolean customClaimsValidated = validateCustomClaims(customClaims);
             if (!customClaimsValidated) {
@@ -286,12 +262,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         return true;
     }
 
-    protected boolean validateAudience(List<String> audiences, String tokenEndPointAlias, String audience ) {
+    protected boolean validateAudience(List<String> audiences, String tokenEndPointAlias, String requested_audience ) {
         return audiences != null && audiences.stream().anyMatch(aud -> aud.equals(tokenEndPointAlias));
-    }
-
-    protected boolean validateResources(String resources) {
-        return true;
     }
 
     protected String resolveSubject(JWTClaimsSet claimsSet) {

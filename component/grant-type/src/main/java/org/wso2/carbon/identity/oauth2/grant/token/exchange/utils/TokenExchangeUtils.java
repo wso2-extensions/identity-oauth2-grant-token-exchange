@@ -312,6 +312,7 @@ public class TokenExchangeUtils {
                     ", TimeStamp Skew : " + timeStampSkewMillis +
                     ", Current Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
         }
+        log.debug("Expiration Time(exp) of JWT was validated successfully.");
         return true;
     }
 
@@ -334,6 +335,7 @@ public class TokenExchangeUtils {
                     ", TimeStamp Skew : " + timeStampSkewMillis +
                     ", Current Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
         }
+        log.debug("Not Before Time(nbf) of JWT was validated successfully.");
         return true;
     }
 
@@ -360,6 +362,7 @@ public class TokenExchangeUtils {
                     ", TimeStamp Skew : " + timeStampSkewMillis +
                     ", Current Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
         }
+        log.debug("Issued At Time(iat) of JWT was validated successfully.");
         return true;
     }
 
