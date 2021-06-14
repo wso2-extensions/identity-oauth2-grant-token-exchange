@@ -18,6 +18,9 @@
 
 package org.wso2.carbon.identity.oauth2.grant.token.exchange;
 
+/**
+ * Constants that will be used in Token Exchange flow.
+ */
 public class TokenExchangeConstants {
 
     public static final String DEFAULT_IDP_NAME = "default";

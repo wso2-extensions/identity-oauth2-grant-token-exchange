@@ -51,7 +51,7 @@ import java.util.stream.Collectors;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleException;
 
 /**
- * Class to handle Token Exchange grant type
+ * Class to handle Token Exchange grant type.
  */
 public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler {
 
@@ -61,25 +61,17 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private String[] registeredClaimNames = new String[]{"iss", "sub", "aud", "exp", "nbf", "iat", "jti"};
     private String requested_token_type = TokenExchangeConstants.JWT_TOKEN_TYPE;
 
-    @Override
+    /**
+     * Initialize the TokenExchangeGrantHandler
+     *
+     * @throws IdentityOAuth2Exception Error when initializing
+     */
     public void init() throws IdentityOAuth2Exception {
+
         super.init();
 
-        /*
-          From identity.xml following configs are read.
-
-          <OAuth>
-              <TokenExchangeGrant>
-                  <EnableIATValidation>true</EnableIATValidation>
-                  <IATValidityPeriod>30</IATValidityPeriod>
-              </TokenExchangeGrant>
-          </OAuth>
-         */
-
         String validateIATProp = IdentityUtil.getProperty(TokenExchangeConstants.PROP_ENABLE_IAT_VALIDATION);
-        if (StringUtils.isNotBlank(validateIATProp)) {
-            validateIAT = Boolean.parseBoolean(validateIATProp);
-        }
+        validateIAT = Boolean.parseBoolean(validateIATProp);
 
         String validityPeriodProp = IdentityUtil.getProperty(TokenExchangeConstants.PROP_IAT_VALIDITY_PERIOD);
 
@@ -97,6 +89,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 log.warn("Empty value is set for IAT validity period. Using default value: " + validityPeriod
                         + " minutes.");
             }
+        } else {
+            log.debug("IAT Validation is disabled for JWT");
         }
 
         String registeredClaims = IdentityUtil.getProperty(TokenExchangeConstants.REGISTERED_CLAIMS);
@@ -112,8 +106,17 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
     }
 
+    /**
+     * Validate the Token Exchange Grant.
+     * Checks whether the token request satisfies the requirements to exchange the token.
+     *
+     * @param tokReqMsgCtx OAuthTokenReqMessageContext
+     * @return true or false if the grant_type is valid or not.
+     * @throws IdentityOAuth2Exception Error when validating the Token Exchange Grant
+     */
     @Override
     public boolean validateGrant(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
+
         SignedJWT signedJWT;
         IdentityProvider identityProvider;
         String tokenEndPointAlias;
@@ -127,7 +130,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         if (requestParams.get(TokenExchangeConstants.REQUESTED_TOKEN_TYPE) != null) {
             requested_token_type = requestParams.get(TokenExchangeConstants.REQUESTED_TOKEN_TYPE)[0];
         }
-        if(requestParams.get(TokenExchangeConstants.AUDIENCE) != null) {
+        if (requestParams.get(TokenExchangeConstants.AUDIENCE) != null) {
             requested_audience = requestParams.get(TokenExchangeConstants.AUDIENCE)[0];
         }
         String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
@@ -180,8 +183,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             }
             TokenExchangeUtils.setAuthorizedUser(tokReqMsgCtx, identityProvider, subject);
 
-            log.debug("Subject(sub) found in JWT: " + subject);
-            log.debug(subject + " set as the Authorized User.");
+            if (log.isDebugEnabled()) {
+                log.debug("Subject(sub) found in JWT: " + subject + " and set as the Authorized User.");
+            }
 
             tokReqMsgCtx.setScope(tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope());
             if (StringUtils.isEmpty(tokenEndPointAlias)) {
@@ -223,8 +227,15 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         return true;
     }
 
+    /**
+     * Issue the Access token
+     *
+     * @return <Code>OAuth2AccessTokenRespDTO</Code> representing the Access Token
+     * @throws IdentityOAuth2Exception Error when generating or persisting the access token
+     */
     @Override
     public OAuth2AccessTokenRespDTO issue(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
+
         OAuth2AccessTokenRespDTO tokenRespDTO = super.issue(tokReqMsgCtx);
         AuthenticatedUser user = tokReqMsgCtx.getAuthorizedUser();
         Map<ClaimMapping, String> userAttributes = user.getUserAttributes();
@@ -235,8 +246,15 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         return tokenRespDTO;
     }
 
+    /**
+     * Returns if token exchange grant type could issue refresh tokens.
+     *
+     * @return <Code>true</Code>|<Code>false</Code> if token exchange grant type can issue refresh tokens or not.
+     * @throws IdentityOAuth2Exception Error when checking if this grant type can issue refresh tokens or not
+     */
     @Override
     public boolean issueRefreshToken() throws IdentityOAuth2Exception {
+
         return OAuthServerConfiguration.getInstance()
                 .getValueForIsRefreshTokenAllowed(TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
     }
@@ -262,11 +280,30 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         return true;
     }
 
+    /**
+     * Method to validate the audience value sent in the request
+     * You can extend this class and override this method to add your validation logic
+     *
+     * @param audiences - Audiences claims in JWT Type Token
+     * @param tokenEndPointAlias - Alias configured in Identity Provider
+     * @param requested_audience - Audience value sent in the payload
+     * @return whether the audience is valid or not
+     */
     protected boolean validateAudience(List<String> audiences, String tokenEndPointAlias, String requested_audience ) {
+
         return audiences != null && audiences.stream().anyMatch(aud -> aud.equals(tokenEndPointAlias));
     }
 
+    /**
+     * the default implementation creates the subject from the Sub attribute.
+     * To translate between the federated and local user store, this may need some mapping.
+     * Override if needed
+     *
+     * @param claimsSet all the JWT claims
+     * @return The subject, to be used
+     */
     protected String resolveSubject(JWTClaimsSet claimsSet) {
+
         return claimsSet.getSubject();
     }
 }

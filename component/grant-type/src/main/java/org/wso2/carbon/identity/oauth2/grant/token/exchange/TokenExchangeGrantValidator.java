@@ -31,9 +31,9 @@ import javax.servlet.http.HttpServletRequest;
 import static org.wso2.carbon.identity.oauth.common.OAuthCommonUtil.validateContentTypes;
 
 /**
- * Grant validator for Token Exchange Grant Type
- * For Token Exchange Grant to be valid the required parameters are
- * grant_type, subject_token and subject_token_type
+ * Grant validator for Token Exchange Grant Type.
+ * A token exchange grant request should have the required parameters -
+ * grant_type, subject_token and subject_token_type.
  */
 public class TokenExchangeGrantValidator extends AbstractValidator<HttpServletRequest> {
 
@@ -45,18 +45,30 @@ public class TokenExchangeGrantValidator extends AbstractValidator<HttpServletRe
         requiredParams.add(TokenExchangeConstants.SUBJECT_TOKEN_TYPE);
     }
 
+    /**
+     * Validate the content-type of the request
+     *
+     * @param request - HttpServletRequest
+     * @throws OAuthProblemException Exception when validating the grant type
+     */
     @Override
     public void validateContentType(HttpServletRequest request) throws OAuthProblemException {
 
         validateContentTypes(request);
     }
 
+    /**
+     * Validate the required request parameters - subject_token_type, subject_token and grant_type in payload
+     *
+     * @param request - HttpServletRequest
+     * @throws OAuthProblemException Exception when validating the required parameters
+     */
     @Override
     public void validateRequiredParameters(HttpServletRequest request) throws OAuthProblemException {
         super.validateRequiredParameters(request);
-        String subject_token_type = request.getParameter(TokenExchangeConstants.SUBJECT_TOKEN_TYPE);
-        if(!StringUtils.equals(TokenExchangeConstants.JWT_TOKEN_TYPE, subject_token_type)) {
-            String message = "Unsupported Subject Token Type : " + subject_token_type + " provided";
+        String subjectTokenType = request.getParameter(TokenExchangeConstants.SUBJECT_TOKEN_TYPE);
+        if(!StringUtils.equals(TokenExchangeConstants.JWT_TOKEN_TYPE, subjectTokenType)) {
+            String message = "Unsupported Subject Token Type : " + subjectTokenType + " provided";
             log.debug(message);
             throw OAuthProblemException.error(OAuthError.TokenResponse.INVALID_REQUEST)
                     .description(message);
