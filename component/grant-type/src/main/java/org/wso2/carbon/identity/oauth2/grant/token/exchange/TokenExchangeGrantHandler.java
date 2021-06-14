@@ -153,20 +153,11 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             String jwtIssuer = claimsSet.getIssuer();
             String subject = resolveSubject(claimsSet);
             List<String> audiences = claimsSet.getAudience();
-            Date expirationTime = claimsSet.getExpirationTime();
-            Date notBeforeTime = claimsSet.getNotBeforeTime();
-            Date issuedAtTime = claimsSet.getIssueTime();
             Map<String, Object> customClaims = new HashMap<>(claimsSet.getClaims());
 
-            tokReqMsgCtx.addProperty(TokenExchangeConstants.EXPIRY_TIME, expirationTime);
-            long currentTimeInMillis = System.currentTimeMillis();
-            long timeStampSkewMillis = OAuthServerConfiguration.getInstance().getTimeStampSkewInSeconds() * 1000;
+            tokReqMsgCtx.addProperty(TokenExchangeConstants.EXPIRY_TIME, claimsSet.getExpirationTime());
 
-            if (StringUtils.isEmpty(jwtIssuer) || StringUtils.isEmpty(subject) || expirationTime == null ||
-                    audiences == null) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory fields(Issuer, Subject, Expiration time "
-                        + "or Audience) are empty in the given JWT");
-            }
+            validateRequiredClaims(claimsSet, subject);
             identityProvider = TokenExchangeUtils.getIdPByIssuer(jwtIssuer, tenantDomain);
             tokenEndPointAlias = TokenExchangeUtils.getTokenEndpointAlias(identityProvider, tenantDomain);
             try {
@@ -197,20 +188,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             if (!audienceFound) {
                 handleException(TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
             }
-            TokenExchangeUtils.checkExpirationTime(expirationTime, currentTimeInMillis, timeStampSkewMillis);
-            if (notBeforeTime != null) {
-                TokenExchangeUtils.checkNotBeforeTime(notBeforeTime, currentTimeInMillis, timeStampSkewMillis);
-            } else {
-                log.debug("Not Before Time(nbf) not found in JWT. Continuing Validation");
-            }
-            if (issuedAtTime == null) {
-                log.debug("Issued At Time(iat) not found in JWT. Continuing Validation");
-            } else if (!validateIAT) {
-                log.debug("Issued At Time (iat) validation is disabled for the JWT");
-            } else {
-                TokenExchangeUtils.checkValidityOfTheToken(issuedAtTime, currentTimeInMillis, timeStampSkewMillis,
-                        validityPeriod);
-            }
+            checkJWTValidity(claimsSet);
             boolean customClaimsValidated = validateCustomClaims(customClaims);
             if (!customClaimsValidated) {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Custom Claims in the JWT were invalid");
@@ -305,5 +283,44 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     protected String resolveSubject(JWTClaimsSet claimsSet) {
 
         return claimsSet.getSubject();
+    }
+
+    private void validateRequiredClaims(JWTClaimsSet claimsSet, String subject) throws IdentityOAuth2Exception {
+
+        if (StringUtils.isEmpty(claimsSet.getIssuer())) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory field - Issuer is empty in the given JWT");
+        }
+        if (claimsSet.getExpirationTime() == null) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory field - Expiration time is empty in the " +
+                    "given JWT");
+        }
+        if (StringUtils.isEmpty(subject)) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory field - Subject is empty in the given JWT");
+        }
+        if (claimsSet.getAudience() == null) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory field - Audience is empty in the given JWT");
+        }
+    }
+
+    private void checkJWTValidity(JWTClaimsSet claimsSet) throws IdentityOAuth2Exception {
+
+        Date notBeforeTime = claimsSet.getNotBeforeTime();
+        Date issuedAtTime = claimsSet.getIssueTime();
+        long currentTimeInMillis = System.currentTimeMillis();
+        long timeStampSkewMillis = OAuthServerConfiguration.getInstance().getTimeStampSkewInSeconds() * 1000;
+        TokenExchangeUtils.checkExpirationTime(claimsSet.getExpirationTime(), currentTimeInMillis, timeStampSkewMillis);
+        if (notBeforeTime != null) {
+            TokenExchangeUtils.checkNotBeforeTime(notBeforeTime, currentTimeInMillis, timeStampSkewMillis);
+        } else {
+            log.debug("Not Before Time(nbf) not found in JWT. Continuing Validation");
+        }
+        if (issuedAtTime == null) {
+            log.debug("Issued At Time(iat) not found in JWT. Continuing Validation");
+        } else if (!validateIAT) {
+            log.debug("Issued At Time (iat) validation is disabled for the JWT");
+        } else {
+            TokenExchangeUtils.checkValidityOfTheToken(issuedAtTime, currentTimeInMillis, timeStampSkewMillis,
+                    validityPeriod);
+        }
     }
 }
