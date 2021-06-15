@@ -105,27 +105,24 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         String requestedAudience = null;
         RequestParameter[] params = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getRequestParameters();
-        Map<String, String[]> requestParams = Arrays.stream(params).collect(Collectors.toMap(RequestParameter::getKey,
-                RequestParameter::getValue));
-        String subjectTokenType = requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)[0];
+        Map<String, String> requestParams = Arrays.stream(params).collect(Collectors.toMap(RequestParameter::getKey,
+                requestParam -> requestParam.getValue()[0]));
+        String subjectTokenType = requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN_TYPE);
 
         if (requestParams.get(TokenExchangeConstants.REQUESTED_TOKEN_TYPE) != null) {
-            requestedTokenType = requestParams.get(TokenExchangeConstants.REQUESTED_TOKEN_TYPE)[0];
+            requestedTokenType = requestParams.get(TokenExchangeConstants.REQUESTED_TOKEN_TYPE);
         }
         if (requestParams.get(TokenExchangeConstants.AUDIENCE) != null) {
-            requestedAudience = requestParams.get(TokenExchangeConstants.AUDIENCE)[0];
+            requestedAudience = requestParams.get(TokenExchangeConstants.AUDIENCE);
         }
         String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
         if (StringUtils.isEmpty(tenantDomain)) {
             tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
         }
-        if (!TokenExchangeConstants.JWT_TOKEN_TYPE.equals(requestedTokenType)) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Unsupported Requested Token Type : " +
-                    requestedTokenType + " provided");
-        }
+        validateRequestedTokenType(requestedTokenType);
         if (TokenExchangeConstants.JWT_TOKEN_TYPE.equals(subjectTokenType) ||
                 (TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType))
-                        && isJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN)[0])) {
+                        && isJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN))) {
             validateJWTSubjectToken(requestParams, tokReqMsgCtx, tenantDomain, requestedAudience);
         } else {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Unsupported Subject Token Type : " +
@@ -214,7 +211,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         return claimsSet.getSubject();
     }
 
-    private void validateJWTSubjectToken(Map<String, String[]> requestParams, OAuthTokenReqMessageContext tokReqMsgCtx,
+    private void validateJWTSubjectToken(Map<String, String> requestParams, OAuthTokenReqMessageContext tokReqMsgCtx,
                                          String tenantDomain, String requestedAudience) throws IdentityOAuth2Exception {
 
         SignedJWT signedJWT;
@@ -223,7 +220,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         JWTClaimsSet claimsSet = null;
         boolean audienceFound;
 
-        signedJWT = TokenExchangeUtils.getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN)[0]);
+        signedJWT = TokenExchangeUtils.getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
         if (signedJWT == null) {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for "
                     + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
@@ -294,6 +291,14 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private boolean isJWT(String tokenIdentifier) {
         // JWT token contains 3 base64 encoded components separated by periods.
         return StringUtils.countMatches(tokenIdentifier, DOT_SEPARATOR) == 2;
+    }
+
+    private void validateRequestedTokenType(String requestedTokenType) throws IdentityOAuth2Exception {
+
+        if (!TokenExchangeConstants.JWT_TOKEN_TYPE.equals(requestedTokenType)) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Unsupported Requested Token Type : " +
+                    requestedTokenType + " provided");
+        }
     }
 
     private void setValidityPeriod(String validityPeriodProp) {
