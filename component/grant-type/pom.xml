@@ -51,6 +51,10 @@
             <artifactId>org.wso2.carbon.identity.core</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.apache.ws.commons.axiom.wso2</groupId>
+            <artifactId>axiom</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.powermock</groupId>
             <artifactId>powermock-module-junit4</artifactId>
             <scope>test</scope>
@@ -118,7 +122,8 @@
                             net.minidev.json; version="${net.minidev.json.imp.pkg.version.range}",
                             org.wso2.carbon.context; version="${carbon.kernel.package.import.version.range}",
                             org.wso2.carbon.user.core.util; version="${carbon.kernel.package.import.version.range}",
-                            org.apache.commons.collections; version="${commons-collections.wso2.osgi.version.range}"
+                            org.apache.commons.collections; version="${commons-collections.wso2.osgi.version.range}",
+                            org.apache.axiom.om; version="${axiom.osgi.version.range}"
                         </Import-Package>
                         <Export-Package>
                             !org.wso2.carbon.identity.oauth2.grant.token.exchange.internal,

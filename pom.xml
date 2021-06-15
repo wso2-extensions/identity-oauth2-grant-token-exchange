@@ -23,7 +23,7 @@
     <parent>
         <groupId>org.wso2</groupId>
         <artifactId>wso2</artifactId>
-        <version>1</version>
+        <version>1.4</version>
     </parent>
     <groupId>org.wso2.carbon.extension.identity.oauth2.grantType.token.exchange</groupId>
     <artifactId>identity-inbound-oauth2-grant-token-exchange</artifactId>
@@ -61,12 +61,12 @@
         <dependency>
             <groupId>org.apache.oltu.oauth2</groupId>
             <artifactId>org.apache.oltu.oauth2.client</artifactId>
-            <version>0.31</version>
+            <version>${apache.oltu.oauth2.client}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.oltu.oauth2</groupId>
             <artifactId>org.apache.oltu.oauth2.common</artifactId>
-            <version>1.0.1</version>
+            <version>${apache.oltu.oauth2.common}</version>
         </dependency>
         <dependency>
             <groupId>org.wso2.carbon.identity.framework</groupId>
@@ -211,6 +211,11 @@
                 <groupId>org.wso2.carbon.identity.framework</groupId>
                 <artifactId>org.wso2.carbon.identity.core</artifactId>
                 <version>${carbon.identity.framework.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.ws.commons.axiom.wso2</groupId>
+                <artifactId>axiom</artifactId>
+                <version>${axiom.wso2.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.powermock</groupId>
@@ -436,5 +441,9 @@
         <commons-codec.version>1.4.0.wso2v1</commons-codec.version>
         <powermock.version>1.7.0</powermock.version>
         <jacoco.version>0.7.9</jacoco.version>
+        <apache.oltu.oauth2.common>1.0.1</apache.oltu.oauth2.common>
+        <apache.oltu.oauth2.client>0.31</apache.oltu.oauth2.client>
+        <axiom.osgi.version.range>[1.2.11, 2.0.0)</axiom.osgi.version.range>
+        <axiom.wso2.version>1.2.11-wso2v16</axiom.wso2.version>
     </properties>
 </project>

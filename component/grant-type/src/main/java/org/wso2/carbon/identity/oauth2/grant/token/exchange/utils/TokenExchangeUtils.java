@@ -25,6 +25,7 @@ import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import net.minidev.json.JSONArray;
+import org.apache.axiom.om.OMElement;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
@@ -40,8 +41,11 @@ import org.wso2.carbon.identity.application.common.model.Property;
 import org.wso2.carbon.identity.application.common.util.IdentityApplicationConstants;
 import org.wso2.carbon.identity.application.common.util.IdentityApplicationManagementUtil;
 import org.wso2.carbon.identity.base.IdentityException;
+import org.wso2.carbon.identity.core.util.IdentityConfigParser;
+import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
+import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.TokenExchangeConstants;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
@@ -61,7 +65,9 @@ import java.text.ParseException;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+import javax.xml.namespace.QName;
 
 public class TokenExchangeUtils {
 
@@ -392,6 +398,42 @@ public class TokenExchangeUtils {
             user.setUserAttributes(FrameworkUtils.buildClaimMappings(mappedClaims));
         }
         tokReqMsgCtx.setAuthorizedUser(user);
+    }
+
+    public static Map<String, String> readTokenExchangeConfiguration() {
+
+        Map<String, String> tokenExchangeConfig = new HashMap<>();
+        IdentityConfigParser configParser = IdentityConfigParser.getInstance();
+        OMElement oauthConfigElem = configParser.getConfigElement(TokenExchangeConstants.CONFIG_ELEM_OAUTH);
+        OMElement supportedGrantTypesElem =
+                oauthConfigElem.getFirstChildWithName(getQNameWithIdentityNS(TokenExchangeConstants
+                        .SUPPORTED_GRANT_TYPES));
+        for (Iterator iterator = supportedGrantTypesElem.getChildElements(); iterator.hasNext(); ) {
+            OMElement supportedGrantType = (OMElement) iterator.next();
+            OMElement grantNameElement = supportedGrantType.getFirstChildWithName(
+                    getQNameWithIdentityNS(TokenExchangeConstants.GRANT_TYPE_NAME));
+            if (TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE.equals(grantNameElement.getText())) {
+                OMElement enableIATValidation = supportedGrantType.getFirstChildWithName(
+                        getQNameWithIdentityNS(TokenExchangeConstants.PROP_ENABLE_IAT_VALIDATION));
+                if (enableIATValidation != null && StringUtils.isNotEmpty(enableIATValidation.getText())) {
+                    tokenExchangeConfig.put(TokenExchangeConstants.PROP_ENABLE_IAT_VALIDATION,
+                            enableIATValidation.getText().trim());
+                }
+
+                OMElement iatValidityPeriod = supportedGrantType.getFirstChildWithName(
+                        getQNameWithIdentityNS(TokenExchangeConstants.PROP_IAT_VALIDITY_PERIOD));
+                if (iatValidityPeriod != null && StringUtils.isNotEmpty(enableIATValidation.getText())) {
+                    tokenExchangeConfig.put(TokenExchangeConstants.PROP_IAT_VALIDITY_PERIOD,
+                            iatValidityPeriod.getText().trim());
+                }
+            }
+        }
+        return tokenExchangeConfig;
+    }
+
+    private static QName getQNameWithIdentityNS(String localPart) {
+
+        return new QName(IdentityCoreConstants.IDENTITY_DEFAULT_NAMESPACE, localPart);
     }
 
     private static X509Certificate resolveSignerCertificate(JWSHeader header, IdentityProvider idp, String

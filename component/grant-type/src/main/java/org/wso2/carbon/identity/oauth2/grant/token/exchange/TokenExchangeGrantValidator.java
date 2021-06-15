@@ -18,17 +18,12 @@
 
 package org.wso2.carbon.identity.oauth2.grant.token.exchange;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.oltu.oauth2.common.OAuth;
-import org.apache.oltu.oauth2.common.error.OAuthError;
-import org.apache.oltu.oauth2.common.exception.OAuthProblemException;
 import org.apache.oltu.oauth2.common.validators.AbstractValidator;
 
 import javax.servlet.http.HttpServletRequest;
-
-import static org.wso2.carbon.identity.oauth.common.OAuthCommonUtil.validateContentTypes;
 
 /**
  * Grant validator for Token Exchange Grant Type.
@@ -43,35 +38,5 @@ public class TokenExchangeGrantValidator extends AbstractValidator<HttpServletRe
         requiredParams.add(OAuth.OAUTH_GRANT_TYPE);
         requiredParams.add(TokenExchangeConstants.SUBJECT_TOKEN);
         requiredParams.add(TokenExchangeConstants.SUBJECT_TOKEN_TYPE);
-    }
-
-    /**
-     * Validate the content-type of the request
-     *
-     * @param request - HttpServletRequest
-     * @throws OAuthProblemException Exception when validating the grant type
-     */
-    @Override
-    public void validateContentType(HttpServletRequest request) throws OAuthProblemException {
-
-        validateContentTypes(request);
-    }
-
-    /**
-     * Validate the required request parameters - subject_token_type, subject_token and grant_type in payload
-     *
-     * @param request - HttpServletRequest
-     * @throws OAuthProblemException Exception when validating the required parameters
-     */
-    @Override
-    public void validateRequiredParameters(HttpServletRequest request) throws OAuthProblemException {
-        super.validateRequiredParameters(request);
-        String subjectTokenType = request.getParameter(TokenExchangeConstants.SUBJECT_TOKEN_TYPE);
-        if(!StringUtils.equals(TokenExchangeConstants.JWT_TOKEN_TYPE, subjectTokenType)) {
-            String message = "Unsupported Subject Token Type : " + subjectTokenType + " provided";
-            log.debug(message);
-            throw OAuthProblemException.error(OAuthError.TokenResponse.INVALID_REQUEST)
-                    .description(message);
-        }
     }
 }

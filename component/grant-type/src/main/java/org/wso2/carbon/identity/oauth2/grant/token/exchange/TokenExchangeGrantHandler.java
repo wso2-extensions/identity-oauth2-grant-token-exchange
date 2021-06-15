@@ -56,10 +56,11 @@ import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenEx
 public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler {
 
     private static final Log log = LogFactory.getLog(TokenExchangeGrantHandler.class);
+    private static final String DOT_SEPARATOR = ".";
     private int validityPeriod;
     private boolean validateIAT = true;
     private String[] registeredClaimNames = new String[]{"iss", "sub", "aud", "exp", "nbf", "iat", "jti"};
-    private String requested_token_type = TokenExchangeConstants.JWT_TOKEN_TYPE;
+    private String requestedTokenType = TokenExchangeConstants.JWT_TOKEN_TYPE;
 
     /**
      * Initialize the TokenExchangeGrantHandler
@@ -69,26 +70,11 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     public void init() throws IdentityOAuth2Exception {
 
         super.init();
-
-        String validateIATProp = IdentityUtil.getProperty(TokenExchangeConstants.PROP_ENABLE_IAT_VALIDATION);
-        validateIAT = Boolean.parseBoolean(validateIATProp);
-
-        String validityPeriodProp = IdentityUtil.getProperty(TokenExchangeConstants.PROP_IAT_VALIDITY_PERIOD);
+        Map<String, String> configMap = TokenExchangeUtils.readTokenExchangeConfiguration();
+        validateIAT = Boolean.parseBoolean(configMap.get(TokenExchangeConstants.PROP_ENABLE_IAT_VALIDATION));
 
         if (validateIAT) {
-            if (StringUtils.isNotBlank(validityPeriodProp)) {
-                try {
-                    validityPeriod = Integer.parseInt(validityPeriodProp);
-                } catch (NumberFormatException e) {
-                    validityPeriod = TokenExchangeConstants.DEFAULT_IAT_VALIDITY_PERIOD;
-                    log.warn("Invalid value: " + validityPeriodProp + " is set for IAT validity period. Using " +
-                            "default value: " + validityPeriod + " minutes.");
-                }
-            } else {
-                validityPeriod = TokenExchangeConstants.DEFAULT_IAT_VALIDITY_PERIOD;
-                log.warn("Empty value is set for IAT validity period. Using default value: " + validityPeriod
-                        + " minutes.");
-            }
+            setValidityPeriod(configMap.get(TokenExchangeConstants.PROP_IAT_VALIDITY_PERIOD));
         } else {
             log.debug("IAT Validation is disabled for JWT");
         }
@@ -99,9 +85,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         if (log.isDebugEnabled()) {
-            log.debug("Validate IAT is set to: " + validateIAT + " for JWT grant.");
+            log.debug("Validate IAT is set to: " + validateIAT + " for Token Exchange grant.");
             if (validateIAT) {
-                log.debug("IAT validity period is set to: " + validityPeriod + " minutes for JWT grant.");
+                log.debug("IAT validity period is set to: " + validityPeriod + " minutes for Token Exchange grant.");
             }
         }
     }
@@ -117,90 +103,33 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     @Override
     public boolean validateGrant(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
 
-        SignedJWT signedJWT;
-        IdentityProvider identityProvider;
-        String tokenEndPointAlias;
-        JWTClaimsSet claimsSet = null;
-        String requested_audience = null;
-        boolean audienceFound;
-
+        String requestedAudience = null;
         RequestParameter[] params = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getRequestParameters();
         Map<String, String[]> requestParams = Arrays.stream(params).collect(Collectors.toMap(RequestParameter::getKey,
                 RequestParameter::getValue));
+        String subjectTokenType = requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)[0];
+
         if (requestParams.get(TokenExchangeConstants.REQUESTED_TOKEN_TYPE) != null) {
-            requested_token_type = requestParams.get(TokenExchangeConstants.REQUESTED_TOKEN_TYPE)[0];
+            requestedTokenType = requestParams.get(TokenExchangeConstants.REQUESTED_TOKEN_TYPE)[0];
         }
         if (requestParams.get(TokenExchangeConstants.AUDIENCE) != null) {
-            requested_audience = requestParams.get(TokenExchangeConstants.AUDIENCE)[0];
+            requestedAudience = requestParams.get(TokenExchangeConstants.AUDIENCE)[0];
         }
         String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
         if (StringUtils.isEmpty(tenantDomain)) {
             tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
         }
-        if (TokenExchangeConstants.JWT_TOKEN_TYPE.equals(requested_token_type)) {
-            signedJWT = TokenExchangeUtils.getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN)[0]);
-            if (signedJWT == null) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for "
-                        + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
-            } else {
-                claimsSet = TokenExchangeUtils.getClaimSet(signedJWT);
-            }
-
-            if (claimsSet == null) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given JSON Web Token");
-            }
-
-            String jwtIssuer = claimsSet.getIssuer();
-            String subject = resolveSubject(claimsSet);
-            List<String> audiences = claimsSet.getAudience();
-            Map<String, Object> customClaims = new HashMap<>(claimsSet.getClaims());
-
-            tokReqMsgCtx.addProperty(TokenExchangeConstants.EXPIRY_TIME, claimsSet.getExpirationTime());
-
-            validateRequiredClaims(claimsSet, subject);
-            identityProvider = TokenExchangeUtils.getIdPByIssuer(jwtIssuer, tenantDomain);
-            tokenEndPointAlias = TokenExchangeUtils.getTokenEndpointAlias(identityProvider, tenantDomain);
-            try {
-                if (signedJWT != null) {
-                    if (TokenExchangeUtils.validateSignature(signedJWT, identityProvider, tenantDomain)) {
-                        log.debug("Signature/MAC validated successfully.");
-                    } else {
-                        handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication " +
-                                "invalid");
-                    }
-                }
-            } catch (JOSEException e) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature");
-            }
-            TokenExchangeUtils.setAuthorizedUser(tokReqMsgCtx, identityProvider, subject);
-
-            if (log.isDebugEnabled()) {
-                log.debug("Subject(sub) found in JWT: " + subject + " and set as the Authorized User.");
-            }
-
-            tokReqMsgCtx.setScope(tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope());
-            if (StringUtils.isEmpty(tokenEndPointAlias)) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Token Endpoint alias of the local Identity " +
-                        "Provider has not been configured for " + identityProvider.getIdentityProviderName());
-            }
-
-            audienceFound = validateAudience(audiences, tokenEndPointAlias, requested_audience);
-            if (!audienceFound) {
-                handleException(TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
-            }
-            checkJWTValidity(claimsSet);
-            boolean customClaimsValidated = validateCustomClaims(customClaims);
-            if (!customClaimsValidated) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Custom Claims in the JWT were invalid");
-            }
-            log.debug("Subject JWT Token was validated successfully");
-            if (OAuth2Util.isOIDCAuthzRequest(tokReqMsgCtx.getScope())) {
-                TokenExchangeUtils.handleCustomClaims(tokReqMsgCtx, customClaims, identityProvider, tenantDomain,
-                        registeredClaimNames);
-            }
-        } else {
+        if (!TokenExchangeConstants.JWT_TOKEN_TYPE.equals(requestedTokenType)) {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Unsupported Requested Token Type : " +
-                    requested_token_type + " provided");
+                    requestedTokenType + " provided");
+        }
+        if (TokenExchangeConstants.JWT_TOKEN_TYPE.equals(subjectTokenType) ||
+                (TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType))
+                        && isJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN)[0])) {
+            validateJWTSubjectToken(requestParams, tokReqMsgCtx, tenantDomain, requestedAudience);
+        } else {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Unsupported Subject Token Type : " +
+                    subjectTokenType + " provided");
         }
         return true;
     }
@@ -220,7 +149,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         if (MapUtils.isNotEmpty(userAttributes)) {
             ClaimsUtil.addUserAttributesToCache(tokenRespDTO, tokReqMsgCtx, userAttributes);
         }
-        tokenRespDTO.addParameter(TokenExchangeConstants.ISSUED_TOKEN_TYPE, requested_token_type);
+        tokenRespDTO.addParameter(TokenExchangeConstants.ISSUED_TOKEN_TYPE, requestedTokenType);
         return tokenRespDTO;
     }
 
@@ -264,10 +193,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      *
      * @param audiences - Audiences claims in JWT Type Token
      * @param tokenEndPointAlias - Alias configured in Identity Provider
-     * @param requested_audience - Audience value sent in the payload
+     * @param requestedAudience - Audience value sent in the payload
      * @return whether the audience is valid or not
      */
-    protected boolean validateAudience(List<String> audiences, String tokenEndPointAlias, String requested_audience ) {
+    protected boolean validateAudience(List<String> audiences, String tokenEndPointAlias, String requestedAudience ) {
 
         return audiences != null && audiences.stream().anyMatch(aud -> aud.equals(tokenEndPointAlias));
     }
@@ -283,6 +212,105 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     protected String resolveSubject(JWTClaimsSet claimsSet) {
 
         return claimsSet.getSubject();
+    }
+
+    private void validateJWTSubjectToken(Map<String, String[]> requestParams, OAuthTokenReqMessageContext tokReqMsgCtx,
+                                         String tenantDomain, String requestedAudience) throws IdentityOAuth2Exception {
+
+        SignedJWT signedJWT;
+        IdentityProvider identityProvider;
+        String tokenEndPointAlias;
+        JWTClaimsSet claimsSet = null;
+        boolean audienceFound;
+
+        signedJWT = TokenExchangeUtils.getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN)[0]);
+        if (signedJWT == null) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for "
+                    + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        } else {
+            claimsSet = TokenExchangeUtils.getClaimSet(signedJWT);
+        }
+
+        if (claimsSet == null) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given JSON Web Token");
+        }
+
+        String jwtIssuer = claimsSet.getIssuer();
+        String subject = resolveSubject(claimsSet);
+        List<String> audiences = claimsSet.getAudience();
+        Map<String, Object> customClaims = new HashMap<>(claimsSet.getClaims());
+
+        tokReqMsgCtx.addProperty(TokenExchangeConstants.EXPIRY_TIME, claimsSet.getExpirationTime());
+
+        validateRequiredClaims(claimsSet, subject);
+        identityProvider = TokenExchangeUtils.getIdPByIssuer(jwtIssuer, tenantDomain);
+        tokenEndPointAlias = TokenExchangeUtils.getTokenEndpointAlias(identityProvider, tenantDomain);
+        try {
+            if (signedJWT != null) {
+                if (TokenExchangeUtils.validateSignature(signedJWT, identityProvider, tenantDomain)) {
+                    log.debug("Signature/MAC validated successfully.");
+                } else {
+                    handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication " +
+                            "invalid");
+                }
+            }
+        } catch (JOSEException e) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature");
+        }
+        TokenExchangeUtils.setAuthorizedUser(tokReqMsgCtx, identityProvider, subject);
+
+        if (log.isDebugEnabled()) {
+            log.debug("Subject(sub) found in JWT: " + subject + " and set as the Authorized User.");
+        }
+
+        tokReqMsgCtx.setScope(tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope());
+        if (StringUtils.isEmpty(tokenEndPointAlias)) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Token Endpoint alias of the local Identity " +
+                    "Provider has not been configured for " + identityProvider.getIdentityProviderName());
+        }
+
+        audienceFound = validateAudience(audiences, tokenEndPointAlias, requestedAudience);
+        if (!audienceFound) {
+            handleException(TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
+        }
+        checkJWTValidity(claimsSet);
+        boolean customClaimsValidated = validateCustomClaims(customClaims);
+        if (!customClaimsValidated) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Custom Claims in the JWT were invalid");
+        }
+        log.debug("Subject JWT Token was validated successfully");
+        if (OAuth2Util.isOIDCAuthzRequest(tokReqMsgCtx.getScope())) {
+            TokenExchangeUtils.handleCustomClaims(tokReqMsgCtx, customClaims, identityProvider, tenantDomain,
+                    registeredClaimNames);
+        }
+    }
+
+    /**
+     * Return true if the token identifier is JWT.
+     *
+     * @param tokenIdentifier String JWT token identifier.
+     * @return true for a JWT token.
+     */
+    private boolean isJWT(String tokenIdentifier) {
+        // JWT token contains 3 base64 encoded components separated by periods.
+        return StringUtils.countMatches(tokenIdentifier, DOT_SEPARATOR) == 2;
+    }
+
+    private void setValidityPeriod(String validityPeriodProp) {
+
+        if (StringUtils.isNotBlank(validityPeriodProp)) {
+            try {
+                validityPeriod = Integer.parseInt(validityPeriodProp);
+            } catch (NumberFormatException e) {
+                validityPeriod = TokenExchangeConstants.DEFAULT_IAT_VALIDITY_PERIOD;
+                log.warn("Invalid value: " + validityPeriodProp + " is set for IAT validity period. Using " +
+                        "default value: " + validityPeriod + " minutes.");
+            }
+        } else {
+            validityPeriod = TokenExchangeConstants.DEFAULT_IAT_VALIDITY_PERIOD;
+            log.warn("Empty value is set for IAT validity period. Using default value: " + validityPeriod
+                    + " minutes.");
+        }
     }
 
     private void validateRequiredClaims(JWTClaimsSet claimsSet, String subject) throws IdentityOAuth2Exception {

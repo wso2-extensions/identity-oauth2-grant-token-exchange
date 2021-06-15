@@ -35,14 +35,19 @@ public class TokenExchangeConstants {
     static final String SUBJECT_TOKEN = "subject_token";
     static final String SUBJECT_TOKEN_TYPE = "subject_token_type";
     static final String JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt";
+    static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
     static final String REQUESTED_TOKEN_TYPE = "requested_token_type";
     static final String ISSUED_TOKEN_TYPE = "issued_token_type";
     static final int DEFAULT_IAT_VALIDITY_PERIOD = 30;
-    static final String PROP_ENABLE_IAT_VALIDATION = "OAuth.TokenExchangeGrant.EnableIATValidation";
-    static final String PROP_IAT_VALIDITY_PERIOD = "OAuth.TokenExchangeGrant.IATValidityPeriod";
+    public static final String PROP_ENABLE_IAT_VALIDATION = "EnableIATValidation";
+    public static final String PROP_IAT_VALIDITY_PERIOD = "IATValidityPeriod";
     static final String REGISTERED_CLAIMS = "OAuth.TokenExchangeGrant.RegisteredClaim";
-    static final String TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
+    public static final String TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
     static final String EXPIRY_TIME = "EXPIRY_TIME_JWT";
     static final String AUDIENCE = "audience";
     static final String INVALID_TARGET = "invalid_target";
+    public static final String CONFIG_ELEM_OAUTH = "OAuth";
+    public static final String SUPPORTED_GRANT_TYPES = "SupportedGrantTypes";
+    public static final String SUPPORTED_GRANT_TYPE = "SupportedGrantType";
+    public static final String GRANT_TYPE_NAME = "GrantTypeName";
 }
