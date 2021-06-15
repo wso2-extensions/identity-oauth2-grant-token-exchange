@@ -15,6 +15,9 @@ grant_handler="org.wso2.carbon.identity.oauth2.grant.token.exchange.TokenExchang
 grant_validator="org.wso2.carbon.identity.oauth2.grant.token.exchange.TokenExchangeGrantValidator"
 [oauth.custom_grant_type.properties]
 IdTokenAllowed=true
+EnableIATValidation=true
+#IAT Validity Period should be specified in minutes
+IATValidityPeriod=30 
 ```
 * Start the WSO2 server
 * Register an Identity Provider in WSO2 Identity Server with the configurations of the external Identity Provider.
@@ -43,18 +46,3 @@ curl --location --request POST 'https://localhost:9443/oauth2/token?scope=openid
     "expires_in": 3600
 }
 ```
-
----
-**NOTE**
-It supports following configurations in `identity.xml` to enable/disable IAT validation for JWT:
-
-```xml
-<TokenExchangeGrant>
-    <EnableIATValidation>true</EnableIATValidation>
-    <IATValidityPeriod>30</IATValidityPeriod>
-</TokenExchangeGrant>
-```
----
-
-
-

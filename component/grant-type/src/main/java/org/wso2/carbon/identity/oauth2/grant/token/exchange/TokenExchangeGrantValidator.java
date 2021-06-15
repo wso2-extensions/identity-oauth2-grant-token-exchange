@@ -18,8 +18,6 @@
 
 package org.wso2.carbon.identity.oauth2.grant.token.exchange;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.oltu.oauth2.common.OAuth;
 import org.apache.oltu.oauth2.common.validators.AbstractValidator;
 
@@ -31,8 +29,6 @@ import javax.servlet.http.HttpServletRequest;
  * grant_type, subject_token and subject_token_type.
  */
 public class TokenExchangeGrantValidator extends AbstractValidator<HttpServletRequest> {
-
-    private static final Log log = LogFactory.getLog(TokenExchangeGrantValidator.class);
 
     public TokenExchangeGrantValidator() {
         requiredParams.add(OAuth.OAUTH_GRANT_TYPE);
