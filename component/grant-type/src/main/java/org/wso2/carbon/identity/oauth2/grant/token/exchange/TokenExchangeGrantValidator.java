@@ -36,7 +36,7 @@ public class TokenExchangeGrantValidator extends AbstractValidator<HttpServletRe
 
     public TokenExchangeGrantValidator() {
         requiredParams.add(OAuth.OAUTH_GRANT_TYPE);
-        requiredParams.add(TokenExchangeConstants.SUBJECT_TOKEN);
-        requiredParams.add(TokenExchangeConstants.SUBJECT_TOKEN_TYPE);
+        requiredParams.add(Constants.TokenExchangeConstants.SUBJECT_TOKEN);
+        requiredParams.add(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE);
     }
 }

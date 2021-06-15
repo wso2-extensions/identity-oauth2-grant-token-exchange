@@ -45,9 +45,8 @@ import org.wso2.carbon.identity.core.util.IdentityConfigParser;
 import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
-import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
-import org.wso2.carbon.identity.oauth2.grant.token.exchange.TokenExchangeConstants;
+import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.util.ClaimsUtil;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
@@ -130,7 +129,7 @@ public class TokenExchangeUtils {
         if (identityProvider != null) {
             // if no IDPs were found for a given name, the IdentityProviderManager returns a dummy IDP with the
             // name "default". We need to handle this case.
-            if (StringUtils.equalsIgnoreCase(identityProvider.getIdentityProviderName(), TokenExchangeConstants
+            if (StringUtils.equalsIgnoreCase(identityProvider.getIdentityProviderName(), Constants
                     .DEFAULT_IDP_NAME)) {
                 //check whether this jwt was issued by the resident identity provider
                 identityProvider = getResidentIDPForIssuer(tenantDomain, jwtIssuer);
@@ -211,14 +210,14 @@ public class TokenExchangeUtils {
         boolean hasJWKSUri = false;
         String jwksUri = null;
 
-        String isJWKSEnalbedProperty = IdentityUtil.getProperty(TokenExchangeConstants.JWKS_VALIDATION_ENABLE_CONFIG);
+        String isJWKSEnalbedProperty = IdentityUtil.getProperty(Constants.JWKS_VALIDATION_ENABLE_CONFIG);
         isJWKSEnabled = Boolean.parseBoolean(isJWKSEnalbedProperty);
         log.debug("JWKS based JWT validation enabled.");
 
         IdentityProviderProperty[] identityProviderProperties = idp.getIdpProperties();
         if (!ArrayUtils.isEmpty(identityProviderProperties)) {
             for (IdentityProviderProperty identityProviderProperty : identityProviderProperties) {
-                if (StringUtils.equals(identityProviderProperty.getName(), TokenExchangeConstants.JWKS_URI)) {
+                if (StringUtils.equals(identityProviderProperty.getName(), Constants.JWKS_URI)) {
                     hasJWKSUri = true;
                     jwksUri = identityProviderProperty.getValue();
                     log.debug("JWKS endpoint set for the identity provider : " + idp.getIdentityProviderName() +
@@ -283,7 +282,7 @@ public class TokenExchangeUtils {
                                      String authenticatedSubjectIdentifier) {
 
         AuthenticatedUser authenticatedUser;
-        if (Boolean.parseBoolean(IdentityUtil.getProperty(TokenExchangeConstants.OAUTH_SPLIT_AUTHZ_USER_3_WAY))) {
+        if (Boolean.parseBoolean(IdentityUtil.getProperty(Constants.OAUTH_SPLIT_AUTHZ_USER_3_WAY))) {
             authenticatedUser = OAuth2Util.getUserFromUserName(authenticatedSubjectIdentifier);
             authenticatedUser.setAuthenticatedSubjectIdentifier(authenticatedSubjectIdentifier);
         } else {
@@ -404,26 +403,26 @@ public class TokenExchangeUtils {
 
         Map<String, String> tokenExchangeConfig = new HashMap<>();
         IdentityConfigParser configParser = IdentityConfigParser.getInstance();
-        OMElement oauthConfigElem = configParser.getConfigElement(TokenExchangeConstants.CONFIG_ELEM_OAUTH);
+        OMElement oauthConfigElem = configParser.getConfigElement(Constants.ConfigElements.CONFIG_ELEM_OAUTH);
         OMElement supportedGrantTypesElem =
-                oauthConfigElem.getFirstChildWithName(getQNameWithIdentityNS(TokenExchangeConstants
+                oauthConfigElem.getFirstChildWithName(getQNameWithIdentityNS(Constants.ConfigElements
                         .SUPPORTED_GRANT_TYPES));
         for (Iterator iterator = supportedGrantTypesElem.getChildElements(); iterator.hasNext(); ) {
             OMElement supportedGrantType = (OMElement) iterator.next();
             OMElement grantNameElement = supportedGrantType.getFirstChildWithName(
-                    getQNameWithIdentityNS(TokenExchangeConstants.GRANT_TYPE_NAME));
-            if (TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE.equals(grantNameElement.getText())) {
+                    getQNameWithIdentityNS(Constants.ConfigElements.GRANT_TYPE_NAME));
+            if (Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE.equals(grantNameElement.getText())) {
                 OMElement enableIATValidation = supportedGrantType.getFirstChildWithName(
-                        getQNameWithIdentityNS(TokenExchangeConstants.PROP_ENABLE_IAT_VALIDATION));
+                        getQNameWithIdentityNS(Constants.ConfigElements.ENABLE_IAT_VALIDATION));
                 if (enableIATValidation != null && StringUtils.isNotEmpty(enableIATValidation.getText())) {
-                    tokenExchangeConfig.put(TokenExchangeConstants.PROP_ENABLE_IAT_VALIDATION,
+                    tokenExchangeConfig.put(Constants.ConfigElements.ENABLE_IAT_VALIDATION,
                             enableIATValidation.getText().trim());
                 }
 
                 OMElement iatValidityPeriod = supportedGrantType.getFirstChildWithName(
-                        getQNameWithIdentityNS(TokenExchangeConstants.PROP_IAT_VALIDITY_PERIOD));
-                if (iatValidityPeriod != null && StringUtils.isNotEmpty(enableIATValidation.getText())) {
-                    tokenExchangeConfig.put(TokenExchangeConstants.PROP_IAT_VALIDITY_PERIOD,
+                        getQNameWithIdentityNS(Constants.ConfigElements.IAT_VALIDITY_PERIOD_IN_MIN));
+                if (iatValidityPeriod != null && StringUtils.isNotEmpty(iatValidityPeriod.getText())) {
+                    tokenExchangeConfig.put(Constants.ConfigElements.IAT_VALIDITY_PERIOD_IN_MIN,
                             iatValidityPeriod.getText().trim());
                 }
             }
@@ -457,7 +456,7 @@ public class TokenExchangeUtils {
      * @throws IdentityOAuth2Exception
      */
     private static void checkValidity(X509Certificate x509Certificate) throws IdentityOAuth2Exception {
-        String isEnforceCertificateValidity = IdentityUtil.getProperty(TokenExchangeConstants
+        String isEnforceCertificateValidity = IdentityUtil.getProperty(Constants
                 .ENFORCE_CERTIFICATE_VALIDITY);
         if (StringUtils.isNotEmpty(isEnforceCertificateValidity)
                 && !Boolean.parseBoolean(isEnforceCertificateValidity)) {
@@ -498,7 +497,7 @@ public class TokenExchangeUtils {
         try {
             residentIdentityProvider = IdentityProviderManager.getInstance().getResidentIdP(tenantDomain);
         } catch (IdentityProviderManagementException e) {
-            String errorMsg = String.format(TokenExchangeConstants.ERROR_GET_RESIDENT_IDP, tenantDomain);
+            String errorMsg = String.format(Constants.ERROR_GET_RESIDENT_IDP, tenantDomain);
             throw new IdentityOAuth2Exception(errorMsg, e);
         }
         FederatedAuthenticatorConfig[] fedAuthnConfigs = residentIdentityProvider.getFederatedAuthenticatorConfigs();
@@ -507,7 +506,7 @@ public class TokenExchangeUtils {
                         IdentityApplicationConstants.Authenticator.OIDC.NAME);
         if (oauthAuthenticatorConfig != null) {
             issuer = IdentityApplicationManagementUtil.getProperty(oauthAuthenticatorConfig.getProperties(),
-                    TokenExchangeConstants.OIDC_IDP_ENTITY_ID).getValue();
+                    Constants.OIDC_IDP_ENTITY_ID).getValue();
         }
         return jwtIssuer.equals(issuer) ? residentIdentityProvider : null;
     }

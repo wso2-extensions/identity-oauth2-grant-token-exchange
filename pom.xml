@@ -229,6 +229,12 @@
                 <version>${powermock.version}</version>
                 <scope>test</scope>
             </dependency>
+            <dependency>
+                <groupId>junit</groupId>
+                <artifactId>junit</artifactId>
+                <version>${junit.version}</version>
+                <scope>test</scope>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -445,5 +451,6 @@
         <apache.oltu.oauth2.client>0.31</apache.oltu.oauth2.client>
         <axiom.osgi.version.range>[1.2.11, 2.0.0)</axiom.osgi.version.range>
         <axiom.wso2.version>1.2.11-wso2v16</axiom.wso2.version>
+        <junit.version>4.12</junit.version>
     </properties>
 </project>

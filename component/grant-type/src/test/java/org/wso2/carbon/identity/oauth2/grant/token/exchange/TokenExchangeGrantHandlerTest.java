@@ -68,19 +68,20 @@ public class TokenExchangeGrantHandlerTest {
 
     @Before
     public void init() throws Exception {
+
         PowerMockito.mockStatic(TokenExchangeUtils.class);
         PowerMockito.mockStatic(OAuthServerConfiguration.class);
         when(OAuthServerConfiguration.getInstance()).thenReturn(mockOAuthServerConfiguration);
         OAuth2AccessTokenReqDTO oAuth2AccessTokenReqDTO = new OAuth2AccessTokenReqDTO();
         oAuth2AccessTokenReqDTO.setClientId("");
         oAuth2AccessTokenReqDTO.setClientSecret("");
-        oAuth2AccessTokenReqDTO.setGrantType(TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        oAuth2AccessTokenReqDTO.setGrantType(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
 
         RequestParameter[] requestParameters = new RequestParameter[3];
-        requestParameters[0] = new RequestParameter(TokenExchangeConstants.SUBJECT_TOKEN_TYPE,
-                TokenExchangeConstants.JWT_TOKEN_TYPE);
-        requestParameters[1] = new RequestParameter(TokenExchangeConstants.SUBJECT_TOKEN, "subject_token");
-        requestParameters[2] = new RequestParameter("grant_type", TokenExchangeConstants
+        requestParameters[0] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE,
+                Constants.TokenExchangeConstants.JWT_TOKEN_TYPE);
+        requestParameters[1] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN, "subject_token");
+        requestParameters[2] = new RequestParameter("grant_type", Constants.TokenExchangeConstants
                 .TOKEN_EXCHANGE_GRANT_TYPE);
         oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
         oAuth2AccessTokenReqDTO.setTenantDomain("carbon.super");
@@ -104,6 +105,7 @@ public class TokenExchangeGrantHandlerTest {
 
     @Test
     public void testValidateGrant() throws Exception {
+
         when(TokenExchangeUtils.validateSignature(signedJWT, idp, "carbon.super")).thenReturn(true);
         when(TokenExchangeUtils.checkExpirationTime(eq(signedJWT.getJWTClaimsSet().getExpirationTime()),
                 eq(System.currentTimeMillis()), Mockito.anyLong())).thenReturn(true);
@@ -117,6 +119,7 @@ public class TokenExchangeGrantHandlerTest {
 
     @Test
     public void testValidateGrantSignatureValidationException() throws Exception {
+
         try {
             when(TokenExchangeUtils.validateSignature(signedJWT, idp, "carbon.super")).thenReturn(false);
             when(TokenExchangeUtils.checkExpirationTime(eq(signedJWT.getJWTClaimsSet().getExpirationTime()),
@@ -133,6 +136,7 @@ public class TokenExchangeGrantHandlerTest {
     }
 
     private SignedJWT getJWTTypeSubjectToken() throws NoSuchAlgorithmException, JOSEException {
+
         KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
         KeyPair keyPair = keyGenerator.generateKeyPair();
         RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
@@ -156,11 +160,12 @@ public class TokenExchangeGrantHandlerTest {
     }
 
     private IdentityProvider getIdentityProvider() {
+
         IdentityProvider identityProvider = new IdentityProvider();
         identityProvider.setDisplayName("https://localhost:9443/oauth2/token");
         identityProvider.setAlias("7N7vQHZbJtPnzegtGXJvvwDL4wca");
         IdentityProviderProperty jwksProperty = new IdentityProviderProperty();
-        jwksProperty.setName(TokenExchangeConstants.JWKS_URI);
+        jwksProperty.setName(Constants.JWKS_URI);
         jwksProperty.setValue("https://localhost:9443/oauth2/jwks");
         IdentityProviderProperty[] idpProperties = new IdentityProviderProperty[1];
         idpProperties[0] = jwksProperty;
