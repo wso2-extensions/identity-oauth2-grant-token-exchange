@@ -73,7 +73,7 @@ public class TokenExchangeUtils {
     private static final Log log = LogFactory.getLog(TokenExchangeUtils.class);
 
     /**
-     * Get the SignedJWT by parsing the subjectToken
+     * Get the SignedJWT by parsing the subjectToken.
      *
      * @param subjectToken  Token sent in the request
      * @return SignedJWT
@@ -95,7 +95,7 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Retrieve the JWTClaimsSet from the SignedJWT
+     * Retrieve the JWTClaimsSet from the SignedJWT.
      *
      * @param signedJWT SignedJWT object
      * @return JWTClaimsSet
@@ -116,7 +116,7 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Get the IdP configurations by issuer
+     * Get the IdP configurations by issuer.
      *
      * @param jwtIssuer         Issuer of the JWT
      * @param tenantDomain      Tenant Domain
@@ -179,7 +179,7 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Get Identity Provider alias
+     * Get Identity Provider alias.
      *
      * @param identityProvider Identity provider
      * @return token endpoint alias
@@ -225,7 +225,7 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Method to validate the signature of the JWT
+     * Method to validate the signature of the JWT.
      *
      * @param signedJWT signed JWT whose signature is to be verified
      * @param idp       Identity provider who issued the signed JWT
@@ -269,7 +269,7 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Validates the expiry time of JWT
+     * Validates the expiry time of JWT.
      *
      * @param expirationTime      Expiration time
      * @param currentTimeInMillis Current time
@@ -291,7 +291,7 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Validates the nbf claim in JWT
+     * Validates the nbf claim in JWT.
      *
      * @param notBeforeTime       Not before time
      * @param currentTimeInMillis Current time
@@ -317,7 +317,7 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Validates IAT claim of JWT
+     * Validates IAT claim of JWT.
      *
      * @param issuedAtTime        Token issued time
      * @param currentTimeInMillis Current time
@@ -373,7 +373,7 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Read configurations related to token exchange grant type from identity.xml
+     * Read configurations related to token exchange grant type from identity.xml.
      *
      * @return Map of configurations key-value pairs
      */

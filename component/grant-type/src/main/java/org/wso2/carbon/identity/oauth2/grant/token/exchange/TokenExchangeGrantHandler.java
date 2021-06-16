@@ -71,7 +71,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private String requestedTokenType = Constants.TokenExchangeConstants.JWT_TOKEN_TYPE;
 
     /**
-     * Initialize the TokenExchangeGrantHandler
+     * Initialize the TokenExchangeGrantHandler.
      *
      * @throws IdentityOAuth2Exception Error when initializing
      */
@@ -126,7 +126,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     }
 
     /**
-     * Issue the Access token
+     * Issue the Access token.
      *
      * @return <Code>OAuth2AccessTokenRespDTO</Code> representing the Access Token
      * @throws IdentityOAuth2Exception Error when generating or persisting the access token
@@ -159,10 +159,11 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
     /**
      * Method to validate the custom claims.
-     * In order to write your own way of validation,
-     * you can extend this class and override this method.
+     * In order to write your own way of validation, you can extend this class and override this method.
      *
      * @param customClaims a map of custom claims
+     * @param idp               - Identity Provider
+     * @param params            - Parameters sent in request
      * @return whether the token is valid based on other claim values
      */
     protected boolean validateCustomClaims(Map<String, Object> customClaims, IdentityProvider idp,
@@ -173,10 +174,11 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
     /**
      * Method to enrich the custom claims.
-     * In order to enrich custom claims to JWT,
-     * you can extend this class and override this method.
+     * In order to enrich custom claims to JWT, you can extend this class and override this method.
      *
      * @param customClaims a map of custom claims
+     * @param idp               - Identity Provider
+     * @param params            - Parameters sent in request
      */
     protected void enrichCustomClaims(Map<String, Object> customClaims, IdentityProvider idp,
                                       RequestParameter[] params) {
@@ -191,6 +193,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @param audiences         - Audiences claims in JWT Type Token
      * @param idp               - Identity Provider
      * @param requestedAudience - Audience value sent in the payload
+     * @param params            - Parameters sent in request
      * @return whether the audience is valid or not
      */
     protected boolean validateAudience(List<String> audiences, IdentityProvider idp, String requestedAudience,
