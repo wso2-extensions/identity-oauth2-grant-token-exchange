@@ -212,7 +212,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             if (claimsSet == null) {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given JSON Web Token");
             }
-            checkJWTValidity(claimsSet);
 
             String jwtIssuer = claimsSet.getIssuer();
             String subject = resolveSubject(claimsSet);
@@ -223,16 +222,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
             validateMandatoryClaims(claimsSet, subject);
             identityProvider = getIdPByIssuer(jwtIssuer, tenantDomain);
-            idpAlias = getIDPAlias(identityProvider, tenantDomain);
-            if (StringUtils.isEmpty(idpAlias)) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Alias of the local Identity " +
-                        "Provider has not been configured for " + identityProvider.getIdentityProviderName());
-            }
-
-            audienceFound = validateAudience(audiences, idpAlias, requestedAudience);
-            if (!audienceFound) {
-                handleException(Constants.TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
-            }
 
             try {
                 if (validateSignature(signedJWT, identityProvider, tenantDomain)) {
@@ -243,6 +232,18 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 }
             } catch (JOSEException e) {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature");
+            }
+            checkJWTValidity(claimsSet);
+
+            idpAlias = getIDPAlias(identityProvider, tenantDomain);
+            if (StringUtils.isEmpty(idpAlias)) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Alias of the local Identity " +
+                        "Provider has not been configured for " + identityProvider.getIdentityProviderName());
+            }
+
+            audienceFound = validateAudience(audiences, idpAlias, requestedAudience);
+            if (!audienceFound) {
+                handleException(Constants.TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
             }
 
             setAuthorizedUser(tokReqMsgCtx, identityProvider, subject);
