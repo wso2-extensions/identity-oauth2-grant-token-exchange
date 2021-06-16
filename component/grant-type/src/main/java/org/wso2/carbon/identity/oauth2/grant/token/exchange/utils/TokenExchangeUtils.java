@@ -446,9 +446,11 @@ public class TokenExchangeUtils {
      */
     private static void logJWT(SignedJWT signedJWT) {
 
-        log.debug("JWT Header: " + signedJWT.getHeader().toJSONObject().toString());
-        log.debug("JWT Payload: " + signedJWT.getPayload().toJSONObject().toString());
-        log.debug("Signature: " + signedJWT.getSignature().toString());
+        if (log.isDebugEnabled()) {
+            log.debug("JWT Header: " + signedJWT.getHeader().toJSONObject().toString());
+            log.debug("JWT Payload: " + signedJWT.getPayload().toJSONObject().toString());
+            log.debug("Signature: " + signedJWT.getSignature().toString());
+        }
     }
 
     /**

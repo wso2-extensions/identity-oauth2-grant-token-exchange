@@ -67,7 +67,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
     private static final Log log = LogFactory.getLog(TokenExchangeGrantHandler.class);
     private int validityPeriodInMin;
-    private String[] registeredClaimNames = new String[]{"iss", "sub", "aud", "exp", "nbf", "iat", "jti"};
+    private final String[] registeredClaimNames = new String[]{"iss", "sub", "aud", "exp", "nbf", "iat", "jti"};
     private String requestedTokenType = Constants.TokenExchangeConstants.JWT_TOKEN_TYPE;
 
     /**
@@ -275,7 +275,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             }
 
             tokReqMsgCtx.setScope(tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope());
-
+            enrichCustomClaims(customClaims, identityProvider, params);
             log.debug("Subject JWT Token was validated successfully");
             if (OAuth2Util.isOIDCAuthzRequest(tokReqMsgCtx.getScope())) {
                 handleCustomClaims(tokReqMsgCtx, customClaims, identityProvider, tenantDomain,
