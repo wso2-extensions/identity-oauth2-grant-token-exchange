@@ -31,6 +31,7 @@ import javax.servlet.http.HttpServletRequest;
 public class TokenExchangeGrantValidator extends AbstractValidator<HttpServletRequest> {
 
     public TokenExchangeGrantValidator() {
+
         requiredParams.add(OAuth.OAUTH_GRANT_TYPE);
         requiredParams.add(Constants.TokenExchangeConstants.SUBJECT_TOKEN);
         requiredParams.add(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE);

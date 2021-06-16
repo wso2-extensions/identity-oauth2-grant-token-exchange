@@ -39,7 +39,6 @@ public class Constants {
         public static final String CONFIG_ELEM_OAUTH = "OAuth";
         public static final String SUPPORTED_GRANT_TYPES = "SupportedGrantTypes";
         public static final String GRANT_TYPE_NAME = "GrantTypeName";
-        public static final String REGISTERED_CLAIMS = "RegisteredClaims";
         public static final String ENABLE_IAT_VALIDATION = "EnableIATValidation";
         public static final String IAT_VALIDITY_PERIOD_IN_MIN = "IATValidityPeriod";
     }

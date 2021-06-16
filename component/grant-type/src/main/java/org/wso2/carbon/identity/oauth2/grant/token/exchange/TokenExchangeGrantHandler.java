@@ -182,13 +182,13 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * You can extend this class and override this method to add your validation logic
      *
      * @param audiences - Audiences claims in JWT Type Token
-     * @param tokenEndPointAlias - Alias configured in Identity Provider
+     * @param idpAlias - Alias configured in Identity Provider
      * @param requestedAudience - Audience value sent in the payload
      * @return whether the audience is valid or not
      */
-    protected boolean validateAudience(List<String> audiences, String tokenEndPointAlias, String requestedAudience ) {
+    protected boolean validateAudience(List<String> audiences, String idpAlias, String requestedAudience ) {
 
-        return audiences != null && audiences.stream().anyMatch(aud -> aud.equals(tokenEndPointAlias));
+        return audiences != null && audiences.stream().anyMatch(aud -> aud.equals(idpAlias));
     }
 
     /**
@@ -219,6 +219,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             if (claimsSet == null) {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given JSON Web Token");
             }
+            checkJWTValidity(claimsSet);
 
             String jwtIssuer = claimsSet.getIssuer();
             String subject = resolveSubject(claimsSet);
@@ -227,7 +228,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
             tokReqMsgCtx.addProperty(Constants.EXPIRY_TIME, claimsSet.getExpirationTime());
 
-            validateRequiredClaims(claimsSet, subject);
+            validateMandatoryClaims(claimsSet, subject);
             identityProvider = getIdPByIssuer(jwtIssuer, tenantDomain);
             idpAlias = getIDPAlias(identityProvider, tenantDomain);
             if (StringUtils.isEmpty(idpAlias)) {
@@ -235,7 +236,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                         "Provider has not been configured for " + identityProvider.getIdentityProviderName());
             }
 
-            checkJWTValidity(claimsSet);
             audienceFound = validateAudience(audiences, idpAlias, requestedAudience);
             if (!audienceFound) {
                 handleException(Constants.TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
@@ -310,7 +310,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
     }
 
-    private void validateRequiredClaims(JWTClaimsSet claimsSet, String subject) throws IdentityOAuth2Exception {
+    private void validateMandatoryClaims(JWTClaimsSet claimsSet, String subject) throws IdentityOAuth2Exception {
 
         if (StringUtils.isEmpty(claimsSet.getIssuer())) {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory field - Issuer is empty in the given JWT");
