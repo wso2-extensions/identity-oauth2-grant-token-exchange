@@ -158,34 +158,49 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     }
 
     /**
-     * Method to validate the custom claims
-     * in order to write your own way of validation,
-     * you can extend this class and override this method
+     * Method to validate the custom claims.
+     * In order to write your own way of validation,
+     * you can extend this class and override this method.
      *
      * @param customClaims a map of custom claims
      * @return whether the token is valid based on other claim values
      */
-    protected boolean validateCustomClaims(Map<String, Object> customClaims) {
+    protected boolean validateCustomClaims(Map<String, Object> customClaims, IdentityProvider idp,
+                                           RequestParameter[] params) {
 
         return true;
     }
 
     /**
-     * Method to validate the audience value sent in the request
-     * You can extend this class and override this method to add your validation logic
+     * Method to enrich the custom claims.
+     * In order to enrich custom claims to JWT,
+     * you can extend this class and override this method.
      *
-     * @param audiences - Audiences claims in JWT Type Token
-     * @param idpAlias - Alias configured in Identity Provider
-     * @param requestedAudience - Audience value sent in the payload
-     * @return whether the audience is valid or not
+     * @param customClaims a map of custom claims
      */
-    protected boolean validateAudience(List<String> audiences, String idpAlias, String requestedAudience ) {
+    protected void enrichCustomClaims(Map<String, Object> customClaims, IdentityProvider idp,
+                                      RequestParameter[] params) {
 
-        return audiences != null && audiences.stream().anyMatch(aud -> aud.equals(idpAlias));
+        return;
     }
 
     /**
-     * the default implementation creates the subject from the Sub attribute.
+     * Method to validate the audience value sent in the request.
+     * You can extend this class and override this method to add your validation logic.
+     *
+     * @param audiences         - Audiences claims in JWT Type Token
+     * @param idp               - Identity Provider
+     * @param requestedAudience - Audience value sent in the payload
+     * @return whether the audience is valid or not
+     */
+    protected boolean validateAudience(List<String> audiences, IdentityProvider idp, String requestedAudience,
+                                       RequestParameter[] params) {
+
+        return audiences != null && audiences.stream().anyMatch(aud -> aud.equals(idp.getAlias()));
+    }
+
+    /**
+     * The default implementation creates the subject from the Sub attribute.
      * To translate between the federated and local user store, this may need some mapping.
      * Override if needed
      *
@@ -240,10 +255,15 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Alias of the local Identity " +
                         "Provider has not been configured for " + identityProvider.getIdentityProviderName());
             }
-
-            audienceFound = validateAudience(audiences, idpAlias, requestedAudience);
+            RequestParameter[] params = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getRequestParameters();
+            audienceFound = validateAudience(audiences, identityProvider, requestedAudience, params);
             if (!audienceFound) {
                 handleException(Constants.TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
+            }
+
+            boolean customClaimsValidated = validateCustomClaims(claimsSet.getClaims(), identityProvider, params);
+            if (!customClaimsValidated) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Custom Claims in the JWT were invalid");
             }
 
             setAuthorizedUser(tokReqMsgCtx, identityProvider, subject);
@@ -253,10 +273,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
             tokReqMsgCtx.setScope(tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope());
 
-            boolean customClaimsValidated = validateCustomClaims(customClaims);
-            if (!customClaimsValidated) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Custom Claims in the JWT were invalid");
-            }
             log.debug("Subject JWT Token was validated successfully");
             if (OAuth2Util.isOIDCAuthzRequest(tokReqMsgCtx.getScope())) {
                 handleCustomClaims(tokReqMsgCtx, customClaims, identityProvider, tenantDomain,
