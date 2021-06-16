@@ -173,42 +173,45 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Get token endpoint alias
+     * Get Identity Provider alias
      *
      * @param identityProvider Identity provider
      * @return token endpoint alias
      */
-    public static String getTokenEndpointAlias(IdentityProvider identityProvider, String tenantDomain) {
+    public static String getIDPAlias(IdentityProvider identityProvider, String tenantDomain)
+            throws IdentityOAuth2Exception {
 
         Property oauthTokenURL = null;
-        String tokenEndPointAlias = null;
+        String idpAlias = null;
         if (IdentityApplicationConstants.RESIDENT_IDP_RESERVED_NAME.equals(
                 identityProvider.getIdentityProviderName())) {
             try {
                 identityProvider = IdentityProviderManager.getInstance().getResidentIdP(tenantDomain);
-            } catch (IdentityProviderManagementException e) {
-                log.debug("Error while getting Resident IDP :" + e.getMessage());
-            }
-            FederatedAuthenticatorConfig[] fedAuthnConfigs =
-                    identityProvider.getFederatedAuthenticatorConfigs();
-            FederatedAuthenticatorConfig oauthAuthenticatorConfig =
-                    IdentityApplicationManagementUtil.getFederatedAuthenticator(fedAuthnConfigs,
-                            IdentityApplicationConstants.Authenticator.OIDC.NAME);
+                FederatedAuthenticatorConfig[] fedAuthnConfigs =
+                        identityProvider.getFederatedAuthenticatorConfigs();
+                FederatedAuthenticatorConfig oauthAuthenticatorConfig =
+                        IdentityApplicationManagementUtil.getFederatedAuthenticator(fedAuthnConfigs,
+                                IdentityApplicationConstants.Authenticator.OIDC.NAME);
 
-            if (oauthAuthenticatorConfig != null) {
-                oauthTokenURL = IdentityApplicationManagementUtil.getProperty(
-                        oauthAuthenticatorConfig.getProperties(),
-                        IdentityApplicationConstants.Authenticator.OIDC.OAUTH2_TOKEN_URL);
-            }
-            if (oauthTokenURL != null) {
-                tokenEndPointAlias = oauthTokenURL.getValue();
-                log.debug("Token End Point Alias of Resident IDP :" + tokenEndPointAlias);
+                if (oauthAuthenticatorConfig != null) {
+                    oauthTokenURL = IdentityApplicationManagementUtil.getProperty(
+                            oauthAuthenticatorConfig.getProperties(),
+                            IdentityApplicationConstants.Authenticator.OIDC.OAUTH2_TOKEN_URL);
+                }
+                if (oauthTokenURL != null) {
+                    idpAlias = oauthTokenURL.getValue();
+                    log.debug("Alias of Resident IDP :" + idpAlias);
+                }
+            } catch (IdentityProviderManagementException e) {
+                String message = "Error while getting Resident IDP :" + e.getMessage();
+                log.error(message);
+                handleException(message);
             }
         } else {
-            tokenEndPointAlias = identityProvider.getAlias();
-            log.debug("Token End Point Alias of the Federated IDP: " + tokenEndPointAlias);
+            idpAlias = identityProvider.getAlias();
+            log.debug("Alias of the Federated IDP: " + idpAlias);
         }
-        return tokenEndPointAlias;
+        return idpAlias;
     }
 
     /**
@@ -392,12 +395,6 @@ public class TokenExchangeUtils {
                 if (iatValidityPeriod != null && StringUtils.isNotEmpty(iatValidityPeriod.getText())) {
                     tokenExchangeConfig.put(Constants.ConfigElements.IAT_VALIDITY_PERIOD_IN_MIN,
                             iatValidityPeriod.getText().trim());
-                }
-
-                OMElement registeredClaims = supportedGrantType.getFirstChildWithName(
-                        getQNameWithIdentityNS(Constants.ConfigElements.REGISTERED_CLAIMS));
-                if (registeredClaims != null && StringUtils.isNotEmpty(registeredClaims.getText())) {
-                    tokenExchangeConfig.put(Constants.ConfigElements.REGISTERED_CLAIMS, registeredClaims.getText());
                 }
             }
         }

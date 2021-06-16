@@ -28,7 +28,6 @@ import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.common.model.ClaimMapping;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
-import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
@@ -52,7 +51,7 @@ import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenEx
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getClaimSet;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getIdPByIssuer;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getSignedJWT;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getTokenEndpointAlias;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getIDPAlias;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleCustomClaims;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils
         .parseTokenExchangeConfiguration;
@@ -92,11 +91,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         } else {
             log.debug("IAT Validation is disabled for JWT");
         }
-
-        String registeredClaims = IdentityUtil.getProperty(Constants.ConfigElements.REGISTERED_CLAIMS);
-        if (StringUtils.isNotBlank(registeredClaims)) {
-            registeredClaimNames = registeredClaims.split("\\s*,\\s*");
-        }
     }
 
     /**
@@ -130,7 +124,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         if (Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(subjectTokenType) ||
                 (Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType))
                         && isJWT(requestParams.get(Constants.TokenExchangeConstants.SUBJECT_TOKEN))) {
-            validateJWTSubjectToken(requestParams, tokReqMsgCtx, tenantDomain, requestedAudience);
+            handleJWTSubjectToken(requestParams, tokReqMsgCtx, tenantDomain, requestedAudience);
         } else {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Unsupported Subject Token Type : " +
                     subjectTokenType + " provided");
@@ -210,12 +204,12 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         return claimsSet.getSubject();
     }
 
-    private void validateJWTSubjectToken(Map<String, String> requestParams, OAuthTokenReqMessageContext tokReqMsgCtx,
-                                         String tenantDomain, String requestedAudience) throws IdentityOAuth2Exception {
+    private void handleJWTSubjectToken(Map<String, String> requestParams, OAuthTokenReqMessageContext tokReqMsgCtx,
+                                       String tenantDomain, String requestedAudience) throws IdentityOAuth2Exception {
 
         SignedJWT signedJWT;
         IdentityProvider identityProvider;
-        String tokenEndPointAlias;
+        String idpAlias;
         JWTClaimsSet claimsSet;
         boolean audienceFound;
 
@@ -225,7 +219,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             if (claimsSet == null) {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given JSON Web Token");
             }
-            checkJWTValidity(claimsSet);
 
             String jwtIssuer = claimsSet.getIssuer();
             String subject = resolveSubject(claimsSet);
@@ -236,13 +229,14 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
             validateRequiredClaims(claimsSet, subject);
             identityProvider = getIdPByIssuer(jwtIssuer, tenantDomain);
-            tokenEndPointAlias = getTokenEndpointAlias(identityProvider, tenantDomain);
-            if (StringUtils.isEmpty(tokenEndPointAlias)) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Token Endpoint alias of the local Identity " +
+            idpAlias = getIDPAlias(identityProvider, tenantDomain);
+            if (StringUtils.isEmpty(idpAlias)) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Alias of the local Identity " +
                         "Provider has not been configured for " + identityProvider.getIdentityProviderName());
             }
 
-            audienceFound = validateAudience(audiences, tokenEndPointAlias, requestedAudience);
+            checkJWTValidity(claimsSet);
+            audienceFound = validateAudience(audiences, idpAlias, requestedAudience);
             if (!audienceFound) {
                 handleException(Constants.TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
             }
