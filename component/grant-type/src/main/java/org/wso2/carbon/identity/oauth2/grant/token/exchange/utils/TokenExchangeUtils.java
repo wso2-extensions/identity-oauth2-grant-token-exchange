@@ -73,30 +73,36 @@ public class TokenExchangeUtils {
     private static final Log log = LogFactory.getLog(TokenExchangeUtils.class);
 
     /**
-     * @param subject_token subject_token sent in the request
-     * @return signedJWT
+     * Get the SignedJWT by parsing the subjectToken
+     *
+     * @param subjectToken  Token sent in the request
+     * @return SignedJWT
+     * @throws IdentityOAuth2Exception Error when parsing the subjectToken
      */
-    public static SignedJWT getSignedJWT(String subject_token) throws IdentityOAuth2Exception {
+    public static SignedJWT getSignedJWT(String subjectToken) throws IdentityOAuth2Exception {
 
         SignedJWT signedJWT;
-        if (StringUtils.isEmpty(subject_token)) {
+        if (StringUtils.isEmpty(subjectToken)) {
             return null;
         }
         try {
-            signedJWT = SignedJWT.parse(subject_token);
+            signedJWT = SignedJWT.parse(subjectToken);
             logJWT(signedJWT);
         } catch (ParseException e) {
-            String errorMessage = "Error while parsing the JWT.";
-            throw new IdentityOAuth2Exception(errorMessage, e);
+            throw new IdentityOAuth2Exception("Error while parsing the JWT", e);
         }
         return signedJWT;
     }
 
     /**
-     * @param signedJWT Signed JWT
-     * @return Claim set
+     * Retrieve the JWTClaimsSet from the SignedJWT
+     *
+     * @param signedJWT SignedJWT object
+     * @return JWTClaimsSet
+     * @throws IdentityOAuth2Exception Error when retrieving the JWTClaimsSet
      */
     public static JWTClaimsSet getClaimSet(SignedJWT signedJWT) throws IdentityOAuth2Exception {
+
         JWTClaimsSet claimsSet = null;
         try {
             claimsSet = signedJWT.getJWTClaimsSet();
@@ -104,13 +110,22 @@ public class TokenExchangeUtils {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given JSON Web Token");
             }
         } catch (ParseException e) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when trying to retrieve claimsSet from the JWT");
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when retrieving claimsSet from the JWT");
         }
         return claimsSet;
     }
 
+    /**
+     * Get the IdP configurations by issuer
+     *
+     * @param jwtIssuer         Issuer of the JWT
+     * @param tenantDomain      Tenant Domain
+     * @return IdentityProvider
+     * @throws IdentityOAuth2Exception error when retrieving the IdP configurations
+     */
     public static IdentityProvider getIdPByIssuer(String jwtIssuer, String tenantDomain) throws
             IdentityOAuth2Exception {
+
         IdentityProvider identityProvider = null;
         try {
             identityProvider = IdentityProviderManager.getInstance().getIdPByMetadataProperty(
@@ -200,18 +215,18 @@ public class TokenExchangeUtils {
      * @param signedJWT signed JWT whose signature is to be verified
      * @param idp       Identity provider who issued the signed JWT
      * @return whether signature is valid, true if valid else false
-     * @throws com.nimbusds.jose.JOSEException
-     * @throws org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception
+     * @throws com.nimbusds.jose.JOSEException Error when verifying the signature of JWT
+     * @throws org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception Error when validating the signature of JWT
      */
     public static boolean validateSignature(SignedJWT signedJWT, IdentityProvider idp, String tenantDomain) throws
             JOSEException, IdentityOAuth2Exception {
 
-        boolean isJWKSEnabled = false;
+        boolean isJWKSEnabled;
         boolean hasJWKSUri = false;
         String jwksUri = null;
 
-        String isJWKSEnalbedProperty = IdentityUtil.getProperty(Constants.JWKS_VALIDATION_ENABLE_CONFIG);
-        isJWKSEnabled = Boolean.parseBoolean(isJWKSEnalbedProperty);
+        String isJWKSEnabledProperty = IdentityUtil.getProperty(Constants.JWKS_VALIDATION_ENABLE_CONFIG);
+        isJWKSEnabled = Boolean.parseBoolean(isJWKSEnabledProperty);
         log.debug("JWKS based JWT validation enabled.");
 
         IdentityProviderProperty[] identityProviderProperties = idp.getIdpProperties();
@@ -220,12 +235,16 @@ public class TokenExchangeUtils {
                 if (StringUtils.equals(identityProviderProperty.getName(), Constants.JWKS_URI)) {
                     hasJWKSUri = true;
                     jwksUri = identityProviderProperty.getValue();
-                    log.debug("JWKS endpoint set for the identity provider : " + idp.getIdentityProviderName() +
-                            ", jwks_uri : " + jwksUri);
+                    if (log.isDebugEnabled()) {
+                        log.debug("JWKS endpoint set for the identity provider : " + idp.getIdentityProviderName() +
+                                ", jwks_uri : " + jwksUri);
+                    }
                     break;
                 } else {
-                    log.debug("JWKS endpoint not specified for the identity provider : " + idp
-                            .getIdentityProviderName());
+                    if (log.isDebugEnabled()) {
+                        log.debug("JWKS endpoint not specified for the identity provider : " + idp
+                                .getIdentityProviderName());
+                    }
                 }
             }
         }
@@ -236,23 +255,19 @@ public class TokenExchangeUtils {
                     ().getAlgorithm().getName(), null);
         } else {
             JWSVerifier verifier = null;
-            JWSHeader header = signedJWT.getHeader();
-            X509Certificate x509Certificate = resolveSignerCertificate(header, idp, tenantDomain);
+            X509Certificate x509Certificate = resolveSignerCertificate(idp, tenantDomain);
             if (x509Certificate == null) {
-                handleException(
-                        "Unable to locate certificate for Identity Provider " + idp.getDisplayName() + "; JWT " +
-                                header.toString());
+                handleException("Unable to locate certificate for Identity Provider " + idp.getDisplayName());
             }
 
-            checkValidity(x509Certificate);
+            checkCertificateValidity(x509Certificate);
 
-            String alg = signedJWT.getHeader().getAlgorithm().getName();
-            if (StringUtils.isEmpty(alg)) {
+            String algorithm = signedJWT.getHeader().getAlgorithm().getName();
+            if (StringUtils.isEmpty(algorithm)) {
                 handleException("Algorithm must not be null.");
             } else {
-                log.debug("Signature Algorithm found in the JWT Header: " + alg);
-                if (alg.startsWith("RS")) {
-                    // At this point 'x509Certificate' will never be null.
+                log.debug("Signature Algorithm found in the JWT Header: " + algorithm);
+                if (algorithm.startsWith("RS")) {
                     PublicKey publicKey = x509Certificate.getPublicKey();
                     if (publicKey instanceof RSAPublicKey) {
                         verifier = new RSASSAVerifier((RSAPublicKey) publicKey);
@@ -260,13 +275,12 @@ public class TokenExchangeUtils {
                         handleException("Public key is not an RSA public key.");
                     }
                 } else {
-                    log.debug("Signature Algorithm not supported yet : " + alg);
+                    log.debug("Signature Algorithm not supported yet : " + algorithm);
                 }
                 if (verifier == null) {
-                    handleException("Could not create a signature verifier for algorithm type: " + alg);
+                    handleException("Could not create a signature verifier for algorithm type: " + algorithm);
                 }
             }
-            // At this point 'verifier' will never be null;
             return signedJWT.verify(verifier);
         }
     }
@@ -296,11 +310,7 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * The JWT MUST contain an exp (expiration) claim that limits the time window during which
-     * the JWT can be used. The authorization server MUST reject any JWT with an expiration time
-     * that has passed, subject to allowable clock skew between systems. Note that the
-     * authorization server may reject JWTs with an exp claim value that is unreasonably far in the
-     * future.
+     * Validates the expiry time of JWT
      *
      * @param expirationTime      Expiration time
      * @param currentTimeInMillis Current time
@@ -322,8 +332,7 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * The JWT MAY contain an nbf (not before) claim that identifies the time before which the
-     * token MUST NOT be accepted for processing.
+     * Validates the nbf claim in JWT
      *
      * @param notBeforeTime       Not before time
      * @param currentTimeInMillis Current time
@@ -333,41 +342,49 @@ public class TokenExchangeUtils {
     public static boolean checkNotBeforeTime(Date notBeforeTime, long currentTimeInMillis, long timeStampSkewMillis)
             throws IdentityOAuth2Exception {
 
-        long notBeforeTimeMillis = notBeforeTime.getTime();
-        if (currentTimeInMillis + timeStampSkewMillis < notBeforeTimeMillis) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "JSON Web Token is used before Not_Before_Time." +
-                    ", Not Before Time(ms) : " + notBeforeTimeMillis +
-                    ", TimeStamp Skew : " + timeStampSkewMillis +
-                    ", Current Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
+        if (notBeforeTime == null) {
+            log.debug("Not Before Time(nbf) not found in JWT. Continuing the validation");
+        } else {
+            long notBeforeTimeMillis = notBeforeTime.getTime();
+            if (currentTimeInMillis + timeStampSkewMillis < notBeforeTimeMillis) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "JSON Web Token is used before Not_Before_Time." +
+                        ", Not Before Time(ms) : " + notBeforeTimeMillis +
+                        ", TimeStamp Skew : " + timeStampSkewMillis +
+                        ", Current Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
+            }
+            log.debug("Not Before Time(nbf) of JWT was validated successfully.");
         }
-        log.debug("Not Before Time(nbf) of JWT was validated successfully.");
         return true;
     }
 
     /**
-     * The JWT MAY contain an iat (issued at) claim that identifies the time at which the JWT was
-     * issued. Note that the authorization server may reject JWTs with an iat claim value that is
-     * unreasonably far in the past
+     * Validates IAT claim of JWT
      *
      * @param issuedAtTime        Token issued time
      * @param currentTimeInMillis Current time
      * @param timeStampSkewMillis Time skew
      * @return true or false
      */
-    public static boolean checkValidityOfTheToken(Date issuedAtTime, long currentTimeInMillis, long timeStampSkewMillis,
-                                                  int validityPeriod) throws IdentityOAuth2Exception {
+    public static boolean validateIssuedAtTime(boolean validateIAT, Date issuedAtTime, long currentTimeInMillis,
+                                               long timeStampSkewMillis, int validityPeriod)
+            throws IdentityOAuth2Exception {
 
-        long issuedAtTimeMillis = issuedAtTime.getTime();
-        long rejectBeforeMillis = 1000L * 60 * validityPeriod;
-        if (currentTimeInMillis + timeStampSkewMillis - issuedAtTimeMillis >
-                rejectBeforeMillis) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "JSON Web Token is issued before the allowed time." +
-                    ", Issued At Time(ms) : " + issuedAtTimeMillis +
-                    ", Reject before limit(ms) : " + rejectBeforeMillis +
-                    ", TimeStamp Skew : " + timeStampSkewMillis +
-                    ", Current Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
+        if (issuedAtTime == null) {
+            log.debug("Issued At Time(iat) not found in JWT. Continuing Validation");
+        } else if (!validateIAT) {
+            log.debug("Issued At Time (iat) validation is disabled for the JWT");
+        } else {
+            long issuedAtTimeMillis = issuedAtTime.getTime();
+            long rejectBeforeMillis = 1000L * 60 * validityPeriod;
+            if (currentTimeInMillis + timeStampSkewMillis - issuedAtTimeMillis > rejectBeforeMillis) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "JSON Web Token is issued before the allowed time." +
+                        ", Issued At Time(ms) : " + issuedAtTimeMillis +
+                        ", Reject before limit(ms) : " + rejectBeforeMillis +
+                        ", TimeStamp Skew : " + timeStampSkewMillis +
+                        ", Current Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
+            }
+            log.debug("Issued At Time(iat) of JWT was validated successfully.");
         }
-        log.debug("Issued At Time(iat) of JWT was validated successfully.");
         return true;
     }
 
@@ -399,7 +416,12 @@ public class TokenExchangeUtils {
         tokReqMsgCtx.setAuthorizedUser(user);
     }
 
-    public static Map<String, String> readTokenExchangeConfiguration() {
+    /**
+     * Read configurations related to token exchange grant type from identity.xml
+     *
+     * @return Map of configurations key-value pairs
+     */
+    public static Map<String, String> parseTokenExchangeConfiguration() {
 
         Map<String, String> tokenExchangeConfig = new HashMap<>();
         IdentityConfigParser configParser = IdentityConfigParser.getInstance();
@@ -425,6 +447,12 @@ public class TokenExchangeUtils {
                     tokenExchangeConfig.put(Constants.ConfigElements.IAT_VALIDITY_PERIOD_IN_MIN,
                             iatValidityPeriod.getText().trim());
                 }
+
+                OMElement registeredClaims = supportedGrantType.getFirstChildWithName(
+                        getQNameWithIdentityNS(Constants.ConfigElements.REGISTERED_CLAIMS));
+                if (registeredClaims != null && StringUtils.isNotEmpty(registeredClaims.getText())) {
+                    tokenExchangeConfig.put(Constants.ConfigElements.REGISTERED_CLAIMS, registeredClaims.getText());
+                }
             }
         }
         return tokenExchangeConfig;
@@ -435,8 +463,8 @@ public class TokenExchangeUtils {
         return new QName(IdentityCoreConstants.IDENTITY_DEFAULT_NAMESPACE, localPart);
     }
 
-    private static X509Certificate resolveSignerCertificate(JWSHeader header, IdentityProvider idp, String
-            tenantDomain) throws IdentityOAuth2Exception {
+    private static X509Certificate resolveSignerCertificate(IdentityProvider idp, String tenantDomain)
+            throws IdentityOAuth2Exception {
 
         X509Certificate x509Certificate = null;
         try {
@@ -452,16 +480,14 @@ public class TokenExchangeUtils {
     /**
      * Check the validity of the x509Certificate.
      *
-     * @param x509Certificate   x509Certificate
+     * @param x509Certificate x509Certificate
      * @throws IdentityOAuth2Exception
      */
-    private static void checkValidity(X509Certificate x509Certificate) throws IdentityOAuth2Exception {
-        String isEnforceCertificateValidity = IdentityUtil.getProperty(Constants
-                .ENFORCE_CERTIFICATE_VALIDITY);
-        if (StringUtils.isNotEmpty(isEnforceCertificateValidity)
-                && !Boolean.parseBoolean(isEnforceCertificateValidity)) {
+    private static void checkCertificateValidity(X509Certificate x509Certificate) throws IdentityOAuth2Exception {
+
+        String isEnforceCertificateValidity = IdentityUtil.getProperty(Constants.ENFORCE_CERTIFICATE_VALIDITY);
+        if (!Boolean.parseBoolean(isEnforceCertificateValidity)) {
             log.debug("Check for the certificate validity is disabled.");
-            return;
         }
         try {
             x509Certificate.checkValidity();

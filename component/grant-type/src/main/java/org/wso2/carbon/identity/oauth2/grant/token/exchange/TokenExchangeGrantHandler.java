@@ -49,14 +49,14 @@ import java.util.stream.Collectors;
 
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkExpirationTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkNotBeforeTime;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkValidityOfTheToken;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateIssuedAtTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getClaimSet;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getIdPByIssuer;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getSignedJWT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getTokenEndpointAlias;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleCustomClaims;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils
-        .readTokenExchangeConfiguration;
+        .parseTokenExchangeConfiguration;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleException;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.setAuthorizedUser;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateSignature;
@@ -81,7 +81,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     public void init() throws IdentityOAuth2Exception {
 
         super.init();
-        Map<String, String> configMap = readTokenExchangeConfiguration();
+        Map<String, String> configMap = parseTokenExchangeConfiguration();
         validateIAT = Boolean.parseBoolean(configMap.get(Constants.ConfigElements.ENABLE_IAT_VALIDATION));
 
         if (validateIAT) {
@@ -90,7 +90,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             log.debug("IAT Validation is disabled for JWT");
         }
 
-        String registeredClaims = IdentityUtil.getProperty(Constants.REGISTERED_CLAIMS);
+        String registeredClaims = IdentityUtil.getProperty(Constants.ConfigElements.REGISTERED_CLAIMS);
         if (StringUtils.isNotBlank(registeredClaims)) {
             registeredClaimNames = registeredClaims.split("\\s*,\\s*");
         }
@@ -228,7 +228,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         SignedJWT signedJWT;
         IdentityProvider identityProvider;
         String tokenEndPointAlias;
-        JWTClaimsSet claimsSet = null;
+        JWTClaimsSet claimsSet;
         boolean audienceFound;
 
         signedJWT = getSignedJWT(requestParams.get(Constants.TokenExchangeConstants.SUBJECT_TOKEN));
@@ -348,23 +348,11 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
     private void checkJWTValidity(JWTClaimsSet claimsSet) throws IdentityOAuth2Exception {
 
-        Date notBeforeTime = claimsSet.getNotBeforeTime();
-        Date issuedAtTime = claimsSet.getIssueTime();
         long currentTimeInMillis = System.currentTimeMillis();
         long timeStampSkewMillis = OAuthServerConfiguration.getInstance().getTimeStampSkewInSeconds() * 1000;
         checkExpirationTime(claimsSet.getExpirationTime(), currentTimeInMillis, timeStampSkewMillis);
-        if (notBeforeTime != null) {
-            checkNotBeforeTime(notBeforeTime, currentTimeInMillis, timeStampSkewMillis);
-        } else {
-            log.debug("Not Before Time(nbf) not found in JWT. Continuing Validation");
-        }
-        if (issuedAtTime == null) {
-            log.debug("Issued At Time(iat) not found in JWT. Continuing Validation");
-        } else if (!validateIAT) {
-            log.debug("Issued At Time (iat) validation is disabled for the JWT");
-        } else {
-            checkValidityOfTheToken(issuedAtTime, currentTimeInMillis, timeStampSkewMillis,
-                    validityPeriodInMin);
-        }
+        checkNotBeforeTime(claimsSet.getNotBeforeTime(), currentTimeInMillis, timeStampSkewMillis);
+        validateIssuedAtTime(validateIAT, claimsSet.getIssueTime(), currentTimeInMillis, timeStampSkewMillis,
+                validityPeriodInMin);
     }
 }
