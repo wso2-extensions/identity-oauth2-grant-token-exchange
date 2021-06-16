@@ -9,15 +9,10 @@ You can exchange external Identity Provider's token for the token issued by Iden
 * Copy the `grant.token.exchange-1.0.0.jar` into <Carbon-Home>/repository/components/dropins directory
 * Add the following configurations to deployment.toml to enable this grant type:
 ```toml
-[[oauth.custom_grant_type]]
-name="urn:ietf:params:oauth:grant-type:token-exchange"
-grant_handler="org.wso2.carbon.identity.oauth2.grant.token.exchange.TokenExchangeGrantHandler"
-grant_validator="org.wso2.carbon.identity.oauth2.grant.token.exchange.TokenExchangeGrantValidator"
-[oauth.custom_grant_type.properties]
-IdTokenAllowed=true
-EnableIATValidation=true
-#IAT Validity Period should be specified in minutes
-IATValidityPeriod=30 
+[oauth.grant_type.token_exchange]
+enable = true
+allow_refresh_tokens = true
+iat_validity_period = "1h"
 ```
 * Start the WSO2 server
 * Register an Identity Provider in WSO2 Identity Server with the configurations of the external Identity Provider.
