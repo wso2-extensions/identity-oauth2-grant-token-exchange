@@ -41,7 +41,6 @@ import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
 import java.util.Arrays;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -86,6 +85,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         if (validateIAT) {
             setValidityPeriod(configMap.get(Constants.ConfigElements.IAT_VALIDITY_PERIOD_IN_MIN));
+            if (log.isDebugEnabled()) {
+                log.debug("IAT validity is enabled and IAT validity period is set to: " + validityPeriodInMin
+                        + "minutes for Token Exchange grant");
+            }
         } else {
             log.debug("IAT Validation is disabled for JWT");
         }
@@ -93,13 +96,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         String registeredClaims = IdentityUtil.getProperty(Constants.ConfigElements.REGISTERED_CLAIMS);
         if (StringUtils.isNotBlank(registeredClaims)) {
             registeredClaimNames = registeredClaims.split("\\s*,\\s*");
-        }
-
-        if (log.isDebugEnabled()) {
-            log.debug("Validate IAT is set to: " + validateIAT + " for Token Exchange grant.");
-            if (validateIAT) {
-                log.debug("IAT validity period is set to: " + validityPeriodInMin + " minutes for Token Exchange grant.");
-            }
         }
     }
 
@@ -164,7 +160,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     /**
      * Returns if token exchange grant type could issue refresh tokens.
      *
-     * @return <Code>true</Code>|<Code>false</Code> if token exchange grant type can issue refresh tokens or not.
+     * @return true | false if token exchange grant type can issue refresh tokens or not.
      * @throws IdentityOAuth2Exception Error when checking if this grant type can issue refresh tokens or not
      */
     @Override
@@ -175,15 +171,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     }
 
     /**
-     * Method to validate the claims other than
-     * iss - Issuer
-     * sub - Subject
-     * aud - Audience
-     * exp - Expiration Time
-     * nbf - Not Before
-     * iat - Issued At
-     * jti - JWT ID
-     * typ - Type
+     * Method to validate the custom claims
      * in order to write your own way of validation,
      * you can extend this class and override this method
      *
@@ -232,64 +220,63 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         boolean audienceFound;
 
         signedJWT = getSignedJWT(requestParams.get(Constants.TokenExchangeConstants.SUBJECT_TOKEN));
-        if (signedJWT == null) {
+        if (signedJWT != null) {
+            claimsSet = getClaimSet(signedJWT);
+            if (claimsSet == null) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given JSON Web Token");
+            }
+            checkJWTValidity(claimsSet);
+
+            String jwtIssuer = claimsSet.getIssuer();
+            String subject = resolveSubject(claimsSet);
+            List<String> audiences = claimsSet.getAudience();
+            Map<String, Object> customClaims = new HashMap<>(claimsSet.getClaims());
+
+            tokReqMsgCtx.addProperty(Constants.EXPIRY_TIME, claimsSet.getExpirationTime());
+
+            validateRequiredClaims(claimsSet, subject);
+            identityProvider = getIdPByIssuer(jwtIssuer, tenantDomain);
+            tokenEndPointAlias = getTokenEndpointAlias(identityProvider, tenantDomain);
+            if (StringUtils.isEmpty(tokenEndPointAlias)) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Token Endpoint alias of the local Identity " +
+                        "Provider has not been configured for " + identityProvider.getIdentityProviderName());
+            }
+
+            audienceFound = validateAudience(audiences, tokenEndPointAlias, requestedAudience);
+            if (!audienceFound) {
+                handleException(Constants.TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
+            }
+
+            try {
+                if (validateSignature(signedJWT, identityProvider, tenantDomain)) {
+                    log.debug("Signature/MAC validated successfully.");
+                } else {
+                    handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication " +
+                            "invalid");
+                }
+            } catch (JOSEException e) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature");
+            }
+
+            setAuthorizedUser(tokReqMsgCtx, identityProvider, subject);
+            if (log.isDebugEnabled()) {
+                log.debug("Subject(sub) found in JWT: " + subject + " and set as the Authorized User.");
+            }
+
+            tokReqMsgCtx.setScope(tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope());
+
+            boolean customClaimsValidated = validateCustomClaims(customClaims);
+            if (!customClaimsValidated) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Custom Claims in the JWT were invalid");
+            }
+            log.debug("Subject JWT Token was validated successfully");
+            if (OAuth2Util.isOIDCAuthzRequest(tokReqMsgCtx.getScope())) {
+                handleCustomClaims(tokReqMsgCtx, customClaims, identityProvider, tenantDomain,
+                        registeredClaimNames);
+            }
+        } else {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for "
                     + Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
-        }
-
-        claimsSet = getClaimSet(signedJWT);
-        if (claimsSet == null) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given JSON Web Token");
-        }
-
-        checkJWTValidity(claimsSet);
-
-        String jwtIssuer = claimsSet.getIssuer();
-        String subject = resolveSubject(claimsSet);
-        List<String> audiences = claimsSet.getAudience();
-        Map<String, Object> customClaims = new HashMap<>(claimsSet.getClaims());
-
-        tokReqMsgCtx.addProperty(Constants.EXPIRY_TIME, claimsSet.getExpirationTime());
-
-        validateRequiredClaims(claimsSet, subject);
-        identityProvider = getIdPByIssuer(jwtIssuer, tenantDomain);
-        tokenEndPointAlias = getTokenEndpointAlias(identityProvider, tenantDomain);
-        if (StringUtils.isEmpty(tokenEndPointAlias)) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Token Endpoint alias of the local Identity " +
-                    "Provider has not been configured for " + identityProvider.getIdentityProviderName());
-        }
-
-        audienceFound = validateAudience(audiences, tokenEndPointAlias, requestedAudience);
-        if (!audienceFound) {
-            handleException(Constants.TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
-        }
-
-        try {
-            if (validateSignature(signedJWT, identityProvider, tenantDomain)) {
-                log.debug("Signature/MAC validated successfully.");
-            } else {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication " +
-                        "invalid");
-            }
-        } catch (JOSEException e) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature");
-        }
-
-        setAuthorizedUser(tokReqMsgCtx, identityProvider, subject);
-        if (log.isDebugEnabled()) {
-            log.debug("Subject(sub) found in JWT: " + subject + " and set as the Authorized User.");
-        }
-
-        tokReqMsgCtx.setScope(tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope());
-
-        boolean customClaimsValidated = validateCustomClaims(customClaims);
-        if (!customClaimsValidated) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Custom Claims in the JWT were invalid");
-        }
-        log.debug("Subject JWT Token was validated successfully");
-        if (OAuth2Util.isOIDCAuthzRequest(tokReqMsgCtx.getScope())) {
-            handleCustomClaims(tokReqMsgCtx, customClaims, identityProvider, tenantDomain,
-                    registeredClaimNames);
         }
     }
 
