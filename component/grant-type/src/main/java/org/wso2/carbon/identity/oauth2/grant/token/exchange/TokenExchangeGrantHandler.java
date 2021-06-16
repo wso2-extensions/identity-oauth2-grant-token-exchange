@@ -58,6 +58,7 @@ import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenEx
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleException;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.setAuthorizedUser;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateSignature;
+import static org.wso2.carbon.identity.oauth2.util.OAuth2Util.isJWT;
 
 /**
  * Class to handle Token Exchange grant type.
@@ -65,7 +66,6 @@ import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenEx
 public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler {
 
     private static final Log log = LogFactory.getLog(TokenExchangeGrantHandler.class);
-    private static final String DOT_SEPARATOR = ".";
     private int validityPeriodInMin;
     private String[] registeredClaimNames = new String[]{"iss", "sub", "aud", "exp", "nbf", "iat", "jti"};
     private String requestedTokenType = Constants.TokenExchangeConstants.JWT_TOKEN_TYPE;
@@ -265,17 +265,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for "
                     + Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
         }
-    }
-
-    /**
-     * Return true if the token identifier is JWT.
-     *
-     * @param tokenIdentifier String JWT token identifier.
-     * @return true for a JWT token.
-     */
-    private boolean isJWT(String tokenIdentifier) {
-        // JWT token contains 3 base64 encoded components separated by periods.
-        return StringUtils.countMatches(tokenIdentifier, DOT_SEPARATOR) == 2;
     }
 
     private void validateRequestedTokenType(String requestedTokenType) throws IdentityOAuth2Exception {
