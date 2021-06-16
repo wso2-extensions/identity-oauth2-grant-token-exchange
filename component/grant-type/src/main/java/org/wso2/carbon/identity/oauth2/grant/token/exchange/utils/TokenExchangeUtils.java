@@ -161,11 +161,13 @@ public class TokenExchangeUtils {
     }
 
     public static void handleException(String code, String errorMessage) throws IdentityOAuth2Exception {
+
         log.error(errorMessage);
         throw new IdentityOAuth2Exception(code, errorMessage);
     }
 
     public static void handleException(String errorMessage) throws IdentityOAuth2Exception {
+
         log.error(errorMessage);
         throw new IdentityOAuth2Exception(errorMessage);
     }
@@ -215,73 +217,17 @@ public class TokenExchangeUtils {
      * @param signedJWT signed JWT whose signature is to be verified
      * @param idp       Identity provider who issued the signed JWT
      * @return whether signature is valid, true if valid else false
-     * @throws com.nimbusds.jose.JOSEException Error when verifying the signature of JWT
+     * @throws com.nimbusds.jose.JOSEException                         Error when verifying the signature of JWT
      * @throws org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception Error when validating the signature of JWT
      */
     public static boolean validateSignature(SignedJWT signedJWT, IdentityProvider idp, String tenantDomain) throws
             JOSEException, IdentityOAuth2Exception {
 
-        boolean isJWKSEnabled;
-        boolean hasJWKSUri = false;
-        String jwksUri = null;
-
-        String isJWKSEnabledProperty = IdentityUtil.getProperty(Constants.JWKS_VALIDATION_ENABLE_CONFIG);
-        isJWKSEnabled = Boolean.parseBoolean(isJWKSEnabledProperty);
-        log.debug("JWKS based JWT validation enabled.");
-
-        IdentityProviderProperty[] identityProviderProperties = idp.getIdpProperties();
-        if (!ArrayUtils.isEmpty(identityProviderProperties)) {
-            for (IdentityProviderProperty identityProviderProperty : identityProviderProperties) {
-                if (StringUtils.equals(identityProviderProperty.getName(), Constants.JWKS_URI)) {
-                    hasJWKSUri = true;
-                    jwksUri = identityProviderProperty.getValue();
-                    if (log.isDebugEnabled()) {
-                        log.debug("JWKS endpoint set for the identity provider : " + idp.getIdentityProviderName() +
-                                ", jwks_uri : " + jwksUri);
-                    }
-                    break;
-                } else {
-                    if (log.isDebugEnabled()) {
-                        log.debug("JWKS endpoint not specified for the identity provider : " + idp
-                                .getIdentityProviderName());
-                    }
-                }
-            }
-        }
-
-        if (isJWKSEnabled && hasJWKSUri) {
-            JWKSBasedJWTValidator jwksBasedJWTValidator = new JWKSBasedJWTValidator();
-            return jwksBasedJWTValidator.validateSignature(signedJWT.getParsedString(), jwksUri, signedJWT.getHeader
-                    ().getAlgorithm().getName(), null);
+        String jwksUri = getJWKSUri(idp);
+        if (isJWKSEnabled() && jwksUri != null) {
+            return validateUsingJWKSUri(signedJWT, jwksUri);
         } else {
-            JWSVerifier verifier = null;
-            X509Certificate x509Certificate = resolveSignerCertificate(idp, tenantDomain);
-            if (x509Certificate == null) {
-                handleException("Unable to locate certificate for Identity Provider " + idp.getDisplayName());
-            }
-
-            checkCertificateValidity(x509Certificate);
-
-            String algorithm = signedJWT.getHeader().getAlgorithm().getName();
-            if (StringUtils.isEmpty(algorithm)) {
-                handleException("Algorithm must not be null.");
-            } else {
-                log.debug("Signature Algorithm found in the JWT Header: " + algorithm);
-                if (algorithm.startsWith("RS")) {
-                    PublicKey publicKey = x509Certificate.getPublicKey();
-                    if (publicKey instanceof RSAPublicKey) {
-                        verifier = new RSASSAVerifier((RSAPublicKey) publicKey);
-                    } else {
-                        handleException("Public key is not an RSA public key.");
-                    }
-                } else {
-                    log.debug("Signature Algorithm not supported yet : " + algorithm);
-                }
-                if (verifier == null) {
-                    handleException("Could not create a signature verifier for algorithm type: " + algorithm);
-                }
-            }
-            return signedJWT.verify(verifier);
+            return validateUsingCertificate(signedJWT, idp, tenantDomain);
         }
     }
 
@@ -502,6 +448,7 @@ public class TokenExchangeUtils {
      * @param signedJWT the signedJWT to be logged
      */
     private static void logJWT(SignedJWT signedJWT) {
+
         log.debug("JWT Header: " + signedJWT.getHeader().toJSONObject().toString());
         log.debug("JWT Payload: " + signedJWT.getPayload().toJSONObject().toString());
         log.debug("Signature: " + signedJWT.getSignature().toString());
@@ -566,5 +513,117 @@ public class TokenExchangeUtils {
             }
         }
         return customClaimMap;
+    }
+
+    /**
+     * Method to check whether the JWKS is enabled.
+     *
+     * @return boolean value depending on whether the JWKS is enabled.
+     */
+    private static boolean isJWKSEnabled() {
+
+        boolean isJWKSEnabled;
+        String isJWKSEnabledProperty = IdentityUtil.getProperty(Constants.JWKS_VALIDATION_ENABLE_CONFIG);
+        isJWKSEnabled = Boolean.parseBoolean(isJWKSEnabledProperty);
+        if (isJWKSEnabled) {
+            log.debug("JWKS based JWT validation enabled.");
+        }
+        return isJWKSEnabled;
+    }
+
+    /**
+     * Method to validate the signature using JWKS Uri.
+     *
+     * @param signedJWT Signed JWT whose signature is to be validated.
+     * @param jwksUri   JWKS Uri of the identity provider.
+     * @return boolean value depending on the success of the validation.
+     * @throws IdentityOAuth2Exception
+     */
+    private static boolean validateUsingJWKSUri(SignedJWT signedJWT, String jwksUri) throws IdentityOAuth2Exception {
+
+        JWKSBasedJWTValidator jwksBasedJWTValidator = new JWKSBasedJWTValidator();
+        return jwksBasedJWTValidator.validateSignature(signedJWT.getParsedString(), jwksUri, signedJWT.getHeader
+                ().getAlgorithm().getName(), null);
+    }
+
+    /**
+     * Method to get the JWKS Uri of the identity provider.
+     *
+     * @param idp Identity provider to get the JWKS Uri.
+     * @return JWKS Uri of the identity provider.
+     */
+    private static String getJWKSUri(IdentityProvider idp) {
+
+        String jwksUri = null;
+
+        IdentityProviderProperty[] identityProviderProperties = idp.getIdpProperties();
+        if (!ArrayUtils.isEmpty(identityProviderProperties)) {
+            for (IdentityProviderProperty identityProviderProperty : identityProviderProperties) {
+                if (StringUtils.equals(identityProviderProperty.getName(), Constants.JWKS_URI)) {
+                    jwksUri = identityProviderProperty.getValue();
+                    if (log.isDebugEnabled()) {
+                        log.debug("JWKS endpoint set for the identity provider : " + idp.getIdentityProviderName() +
+                                ", jwks_uri : " + jwksUri);
+                    }
+                    break;
+                } else {
+                    if (log.isDebugEnabled()) {
+                        log.debug("JWKS endpoint not specified for the identity provider : " + idp
+                                .getIdentityProviderName());
+                    }
+                }
+            }
+        }
+        return jwksUri;
+    }
+
+    /**
+     * Method to validate the signature using certificate
+     *
+     * @param signedJWT Signed JWT whose signature is to be validated.
+     * @param idp       Identity provider to get the certificate.
+     * @return boolean value depending on the success of the validation.
+     * @throws IdentityOAuth2Exception
+     * @throws JOSEException
+     */
+    private static boolean validateUsingCertificate(SignedJWT signedJWT, IdentityProvider idp, String tenantDomain)
+            throws IdentityOAuth2Exception, JOSEException {
+
+        JWSVerifier verifier = null;
+        JWSHeader header = signedJWT.getHeader();
+        X509Certificate x509Certificate = resolveSignerCertificate(idp, tenantDomain);
+        if (x509Certificate == null) {
+            handleException("Unable to locate certificate for Identity Provider " + idp.getDisplayName() + "; JWT " +
+                            header.toString());
+        }
+
+        checkCertificateValidity(x509Certificate);
+
+        String alg = signedJWT.getHeader().getAlgorithm().getName();
+        if (StringUtils.isEmpty(alg)) {
+            handleException("Algorithm must not be null.");
+        } else {
+            if (log.isDebugEnabled()) {
+                log.debug("Signature Algorithm found in the JWT Header: " + alg);
+            }
+            if (alg.startsWith("RS")) {
+                // At this point 'x509Certificate' will never be null.
+                PublicKey publicKey = x509Certificate.getPublicKey();
+                if (publicKey instanceof RSAPublicKey) {
+                    verifier = new RSASSAVerifier((RSAPublicKey) publicKey);
+                } else {
+                    handleException("Public key is not an RSA public key.");
+                }
+            } else {
+                if (log.isDebugEnabled()) {
+                    log.debug("Signature Algorithm not supported yet : " + alg);
+                }
+            }
+            if (verifier == null) {
+                handleException("Could not create a signature verifier for algorithm type: " + alg);
+            }
+        }
+        // At this point 'verifier' will never be null;
+        return signedJWT.verify(verifier);
     }
 }
