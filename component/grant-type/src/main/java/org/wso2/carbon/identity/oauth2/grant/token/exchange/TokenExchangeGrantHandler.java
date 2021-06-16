@@ -67,7 +67,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private static final Log log = LogFactory.getLog(TokenExchangeGrantHandler.class);
     private static final String DOT_SEPARATOR = ".";
     private int validityPeriodInMin;
-    private boolean validateIAT = true;
     private String[] registeredClaimNames = new String[]{"iss", "sub", "aud", "exp", "nbf", "iat", "jti"};
     private String requestedTokenType = Constants.TokenExchangeConstants.JWT_TOKEN_TYPE;
 
@@ -80,16 +79,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         super.init();
         Map<String, String> configMap = parseTokenExchangeConfiguration();
-        validateIAT = Boolean.parseBoolean(configMap.get(Constants.ConfigElements.ENABLE_IAT_VALIDATION));
-
-        if (validateIAT) {
-            setValidityPeriod(configMap.get(Constants.ConfigElements.IAT_VALIDITY_PERIOD_IN_MIN));
-            if (log.isDebugEnabled()) {
-                log.debug("IAT validity is enabled and IAT validity period is set to: " + validityPeriodInMin
-                        + "minutes for Token Exchange grant");
-            }
-        } else {
-            log.debug("IAT Validation is disabled for JWT");
+        setValidityPeriod(configMap.get(Constants.ConfigElements.IAT_VALIDITY_PERIOD_IN_MIN));
+        if (log.isDebugEnabled()) {
+            log.debug("IAT validity period is set to: " + validityPeriodInMin + "minutes for " +
+                    "Token Exchange grant");
         }
     }
 
@@ -333,7 +326,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         long timeStampSkewMillis = OAuthServerConfiguration.getInstance().getTimeStampSkewInSeconds() * 1000;
         checkExpirationTime(claimsSet.getExpirationTime(), currentTimeInMillis, timeStampSkewMillis);
         checkNotBeforeTime(claimsSet.getNotBeforeTime(), currentTimeInMillis, timeStampSkewMillis);
-        validateIssuedAtTime(validateIAT, claimsSet.getIssueTime(), currentTimeInMillis, timeStampSkewMillis,
-                validityPeriodInMin);
+        validateIssuedAtTime(claimsSet.getIssueTime(), currentTimeInMillis, timeStampSkewMillis, validityPeriodInMin);
     }
 }

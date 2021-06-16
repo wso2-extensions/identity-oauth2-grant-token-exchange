@@ -109,7 +109,7 @@ public class TokenExchangeGrantHandlerTest {
         when(TokenExchangeUtils.validateSignature(signedJWT, idp, "carbon.super")).thenReturn(true);
         when(TokenExchangeUtils.checkExpirationTime(eq(signedJWT.getJWTClaimsSet().getExpirationTime()),
                 eq(System.currentTimeMillis()), Mockito.anyLong())).thenReturn(true);
-        when(TokenExchangeUtils.validateIssuedAtTime(eq(true), eq(signedJWT.getJWTClaimsSet().getIssueTime()),
+        when(TokenExchangeUtils.validateIssuedAtTime(eq(signedJWT.getJWTClaimsSet().getIssueTime()),
                 eq(System.currentTimeMillis()), Mockito.anyLong(), Mockito.anyInt())).thenReturn(true);
         TokenExchangeGrantHandler tokenExchangeGrantHandler = new TokenExchangeGrantHandler();
         tokenExchangeGrantHandler.init();
@@ -124,7 +124,7 @@ public class TokenExchangeGrantHandlerTest {
             when(TokenExchangeUtils.validateSignature(signedJWT, idp, "carbon.super")).thenReturn(false);
             when(TokenExchangeUtils.checkExpirationTime(eq(signedJWT.getJWTClaimsSet().getExpirationTime()),
                     eq(System.currentTimeMillis()), Mockito.anyLong())).thenReturn(true);
-            when(TokenExchangeUtils.validateIssuedAtTime(eq(true), eq(signedJWT.getJWTClaimsSet().getIssueTime()),
+            when(TokenExchangeUtils.validateIssuedAtTime(eq(signedJWT.getJWTClaimsSet().getIssueTime()),
                     eq(System.currentTimeMillis()), Mockito.anyLong(), Mockito.anyInt())).thenReturn(true);
             TokenExchangeGrantHandler tokenExchangeGrantHandler = new TokenExchangeGrantHandler();
             tokenExchangeGrantHandler.init();

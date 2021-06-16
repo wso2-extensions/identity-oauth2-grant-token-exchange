@@ -314,14 +314,11 @@ public class TokenExchangeUtils {
      * @param timeStampSkewMillis Time skew
      * @return true or false
      */
-    public static boolean validateIssuedAtTime(boolean validateIAT, Date issuedAtTime, long currentTimeInMillis,
-                                               long timeStampSkewMillis, int validityPeriod)
-            throws IdentityOAuth2Exception {
+    public static boolean validateIssuedAtTime(Date issuedAtTime, long currentTimeInMillis, long timeStampSkewMillis,
+                                               int validityPeriod) throws IdentityOAuth2Exception {
 
         if (issuedAtTime == null) {
             log.debug("Issued At Time(iat) not found in JWT. Continuing Validation");
-        } else if (!validateIAT) {
-            log.debug("Issued At Time (iat) validation is disabled for the JWT");
         } else {
             long issuedAtTimeMillis = issuedAtTime.getTime();
             long rejectBeforeMillis = 1000L * 60 * validityPeriod;
@@ -383,13 +380,6 @@ public class TokenExchangeUtils {
             OMElement grantNameElement = supportedGrantType.getFirstChildWithName(
                     getQNameWithIdentityNS(Constants.ConfigElements.GRANT_TYPE_NAME));
             if (Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE.equals(grantNameElement.getText())) {
-                OMElement enableIATValidation = supportedGrantType.getFirstChildWithName(
-                        getQNameWithIdentityNS(Constants.ConfigElements.ENABLE_IAT_VALIDATION));
-                if (enableIATValidation != null && StringUtils.isNotEmpty(enableIATValidation.getText())) {
-                    tokenExchangeConfig.put(Constants.ConfigElements.ENABLE_IAT_VALIDATION,
-                            enableIATValidation.getText().trim());
-                }
-
                 OMElement iatValidityPeriod = supportedGrantType.getFirstChildWithName(
                         getQNameWithIdentityNS(Constants.ConfigElements.IAT_VALIDITY_PERIOD_IN_MIN));
                 if (iatValidityPeriod != null && StringUtils.isNotEmpty(iatValidityPeriod.getText())) {

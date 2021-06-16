@@ -39,7 +39,6 @@ public class Constants {
         public static final String CONFIG_ELEM_OAUTH = "OAuth";
         public static final String SUPPORTED_GRANT_TYPES = "SupportedGrantTypes";
         public static final String GRANT_TYPE_NAME = "GrantTypeName";
-        public static final String ENABLE_IAT_VALIDATION = "EnableIATValidation";
         public static final String IAT_VALIDITY_PERIOD_IN_MIN = "IATValidityPeriod";
     }
 
@@ -52,6 +51,6 @@ public class Constants {
             "JWTValidatorConfigs.EnforceCertificateExpiryTimeValidity";
     public static final String OAUTH_SPLIT_AUTHZ_USER_3_WAY = "OAuth.SplitAuthzUser3Way";
     public static final String OIDC_IDP_ENTITY_ID = "IdPEntityId";
-    static final int DEFAULT_IAT_VALIDITY_PERIOD_IN_MIN = 30;
+    static final int DEFAULT_IAT_VALIDITY_PERIOD_IN_MIN = 60;
     static final String EXPIRY_TIME = "EXPIRY_TIME_JWT";
 }
