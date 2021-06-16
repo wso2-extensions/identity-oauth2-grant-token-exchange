@@ -119,7 +119,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                         && isJWT(requestParams.get(Constants.TokenExchangeConstants.SUBJECT_TOKEN))) {
             handleJWTSubjectToken(requestParams, tokReqMsgCtx, tenantDomain, requestedAudience);
         } else {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Unsupported Subject Token Type : " +
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Unsupported subject token type : " +
                     subjectTokenType + " provided");
         }
         return true;
@@ -281,7 +281,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private void validateRequestedTokenType(String requestedTokenType) throws IdentityOAuth2Exception {
 
         if (!Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(requestedTokenType)) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Unsupported Requested Token Type : " +
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Unsupported requested token type : " +
                     requestedTokenType + " provided");
         }
     }

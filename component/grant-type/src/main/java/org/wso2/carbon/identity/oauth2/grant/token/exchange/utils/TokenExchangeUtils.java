@@ -139,7 +139,7 @@ public class TokenExchangeUtils {
                 identityProvider = IdentityProviderManager.getInstance().getIdPByName(jwtIssuer, tenantDomain);
             }
         } catch (IdentityProviderManagementException e) {
-            handleException("Error while getting the Federated Identity Provider");
+            handleException("Error while getting the Federated Identity Provider", e);
         }
         if (identityProvider != null) {
             // if no IDPs were found for a given name, the IdentityProviderManager returns a dummy IDP with the
@@ -172,6 +172,12 @@ public class TokenExchangeUtils {
         throw new IdentityOAuth2Exception(errorMessage);
     }
 
+    public static void handleException(String errorMessage, Throwable e) throws IdentityOAuth2Exception {
+
+        log.error(errorMessage);
+        throw new IdentityOAuth2Exception(errorMessage, e);
+    }
+
     /**
      * Get Identity Provider alias
      *
@@ -200,7 +206,9 @@ public class TokenExchangeUtils {
                 }
                 if (oauthTokenURL != null) {
                     idpAlias = oauthTokenURL.getValue();
-                    log.debug("Alias of Resident IDP :" + idpAlias);
+                    if (log.isDebugEnabled()) {
+                        log.debug("Alias of Resident IDP :" + idpAlias);
+                    }
                 }
             } catch (IdentityProviderManagementException e) {
                 String message = "Error while getting Resident IDP :" + e.getMessage();
@@ -209,7 +217,9 @@ public class TokenExchangeUtils {
             }
         } else {
             idpAlias = identityProvider.getAlias();
-            log.debug("Alias of the Federated IDP: " + idpAlias);
+            if (log.isDebugEnabled()) {
+                log.debug("Alias of the Federated IDP: " + idpAlias);
+            }
         }
         return idpAlias;
     }
