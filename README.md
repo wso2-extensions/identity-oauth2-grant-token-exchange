@@ -14,6 +14,19 @@ enable = true
 allow_refresh_tokens = true
 iat_validity_period = "1h"
 ```
+---
+NOTE:
+If you are adding it as a custom grant type, add the following configuration to deployment.toml to enable this grant type:
+```toml
+[[oauth.custom_grant_type]]
+name="urn:ietf:params:oauth:grant-type:token-exchange"
+grant_handler="org.wso2.carbon.identity.oauth2.grant.token.exchange.TokenExchangeGrantHandler"
+grant_validator="org.wso2.carbon.identity.oauth2.grant.token.exchange.TokenExchangeGrantValidator"
+[oauth.custom_grant_type.properties]
+IdTokenAllowed=true
+IATValidityPeriod="1h"
+```
+---
 * Start the WSO2 server
 * Register an Identity Provider in WSO2 Identity Server with the configurations of the external Identity Provider.
 * Obtain an access token from external Identity Provider
