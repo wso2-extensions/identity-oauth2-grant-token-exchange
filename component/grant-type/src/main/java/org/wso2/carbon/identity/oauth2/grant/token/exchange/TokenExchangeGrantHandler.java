@@ -109,11 +109,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         if (requestParams.get(Constants.TokenExchangeConstants.AUDIENCE) != null) {
             requestedAudience = requestParams.get(Constants.TokenExchangeConstants.AUDIENCE);
         }
-        String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
-        if (StringUtils.isEmpty(tenantDomain)) {
-            tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
-        }
+
+        String tenantDomain = getTenantDomain(tokReqMsgCtx);
         validateRequestedTokenType(requestedTokenType);
+
         if (Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(subjectTokenType) ||
                 (Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType))
                         && isJWT(requestParams.get(Constants.TokenExchangeConstants.SUBJECT_TOKEN))) {
@@ -213,6 +212,14 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     protected String resolveSubject(JWTClaimsSet claimsSet) {
 
         return claimsSet.getSubject();
+    }
+
+    private String getTenantDomain(OAuthTokenReqMessageContext tokReqMsgCtx) {
+        String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
+        if (StringUtils.isEmpty(tenantDomain)) {
+            tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
+        }
+        return tenantDomain;
     }
 
     private void handleJWTSubjectToken(Map<String, String> requestParams, OAuthTokenReqMessageContext tokReqMsgCtx,
