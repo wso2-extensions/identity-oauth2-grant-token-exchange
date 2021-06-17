@@ -25,16 +25,15 @@ import com.nimbusds.jose.JWSSigner;
 import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
-import org.junit.Assert;
-import org.junit.runner.RunWith;
 
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.junit.Before;
-import org.junit.Test;
-import org.powermock.modules.junit4.PowerMockRunner;
+import org.powermock.modules.testng.PowerMockTestCase;
+import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.application.common.model.IdentityProviderProperty;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
@@ -52,13 +51,11 @@ import java.security.interfaces.RSAPrivateKey;
 import java.time.Instant;
 import java.util.Date;
 
-import static org.junit.Assert.fail;
 import static org.mockito.Matchers.eq;
 import static org.powermock.api.mockito.PowerMockito.when;
 
-@RunWith(PowerMockRunner.class)
 @PrepareForTest({TokenExchangeUtils.class, OAuthServerConfiguration.class, AbstractAuthorizationGrantHandler.class})
-public class TokenExchangeGrantHandlerTest {
+public class TokenExchangeGrantHandlerTest extends PowerMockTestCase {
 
     @Mock
     private OAuthServerConfiguration mockOAuthServerConfiguration;
@@ -66,7 +63,7 @@ public class TokenExchangeGrantHandlerTest {
     private IdentityProvider idp;
     private OAuthTokenReqMessageContext tokReqMsgCtx;
 
-    @Before
+    @BeforeMethod
     public void init() throws Exception {
 
         PowerMockito.mockStatic(TokenExchangeUtils.class);
@@ -129,7 +126,7 @@ public class TokenExchangeGrantHandlerTest {
             TokenExchangeGrantHandler tokenExchangeGrantHandler = new TokenExchangeGrantHandler();
             tokenExchangeGrantHandler.init();
             tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
-            fail("Expected exception not thrown");
+            Assert.fail("Expected exception not thrown");
         } catch (IdentityOAuth2Exception e) {
             Assert.assertEquals("Signature Message Authentication invalid", e.getMessage());
         }
