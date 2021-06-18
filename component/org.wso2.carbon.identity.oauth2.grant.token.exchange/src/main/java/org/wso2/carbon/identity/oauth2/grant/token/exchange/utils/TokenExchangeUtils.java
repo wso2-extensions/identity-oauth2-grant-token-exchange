@@ -68,6 +68,8 @@ import java.util.Iterator;
 import java.util.Map;
 import javax.xml.namespace.QName;
 
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.REGISTERED_CLAIMS;
+
 /**
  * Util methods for Token Exchange Grant Type.
  */
@@ -78,7 +80,7 @@ public class TokenExchangeUtils {
     /**
      * Get the SignedJWT by parsing the subjectToken.
      *
-     * @param subjectToken  Token sent in the request
+     * @param subjectToken Token sent in the request
      * @return SignedJWT
      * @throws IdentityOAuth2Exception Error when parsing the subjectToken
      */
@@ -120,85 +122,113 @@ public class TokenExchangeUtils {
     /**
      * Get the IdP configurations by issuer.
      *
-     * @param jwtIssuer         Issuer of the JWT
-     * @param tenantDomain      Tenant Domain
+     * @param jwtIssuer    Issuer of the JWT
+     * @param tenantDomain Tenant Domain
      * @return IdentityProvider
-     * @throws IdentityOAuth2Exception error when retrieving the IdP configurations
+     * @throws IdentityOAuth2Exception Error when retrieving the IdP configurations
      */
-    public static IdentityProvider getIDP(String jwtIssuer, String tenantDomain) throws
-            IdentityOAuth2Exception {
+    public static IdentityProvider getIDP(String jwtIssuer, String tenantDomain) throws IdentityOAuth2Exception {
 
         IdentityProvider identityProvider = null;
         try {
-            identityProvider = IdentityProviderManager.getInstance().getIdPByMetadataProperty(
-                    IdentityApplicationConstants.IDP_ISSUER_NAME, jwtIssuer, tenantDomain, false);
+            identityProvider =
+                    IdentityProviderManager.getInstance().getIdPByMetadataProperty(IdentityApplicationConstants
+                            .IDP_ISSUER_NAME, jwtIssuer, tenantDomain, true);
             if (identityProvider == null) {
                 if (log.isDebugEnabled()) {
-                    log.debug("IDP not found when retrieving for IDP using property: " +
-                            IdentityApplicationConstants.IDP_ISSUER_NAME + " with value: " + jwtIssuer +
-                            ". Attempting to retrieve IDP using IDP Name as issuer.");
+                    log.debug("IDP not found when retrieving for IDP using property: "
+                            + IdentityApplicationConstants.IDP_ISSUER_NAME + " with value: " + jwtIssuer
+                            + ". Attempting to retrieve IDP using IDP Name as issuer.");
                 }
-                identityProvider = IdentityProviderManager.getInstance().getIdPByName(jwtIssuer, tenantDomain);
+                identityProvider = IdentityProviderManager.getInstance().getIdPByName(jwtIssuer, tenantDomain, true);
             }
         } catch (IdentityProviderManagementException e) {
             handleException("Error while getting the Federated Identity Provider", e);
         }
         if (identityProvider == null) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Registered IDP found for the JWT with issuer name : "
-                    + jwtIssuer);
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Registered IDP found for the JWT with issuer name "
+                    + ":" + " " + jwtIssuer);
         }
         return identityProvider;
     }
 
+    /**
+     * Method to handle exception.
+     *
+     * @param code         Error Code
+     * @param errorMessage Error Description
+     * @throws IdentityOAuth2Exception
+     */
     public static void handleException(String code, String errorMessage) throws IdentityOAuth2Exception {
 
         log.error(errorMessage);
         throw new IdentityOAuth2Exception(code, errorMessage);
     }
 
+    /**
+     * Method to handle exception.
+     *
+     * @param errorMessage Error Description
+     * @throws IdentityOAuth2Exception
+     */
     public static void handleException(String errorMessage) throws IdentityOAuth2Exception {
 
         log.error(errorMessage);
         throw new IdentityOAuth2Exception(errorMessage);
     }
 
+    /**
+     * Method to handle exception.
+     *
+     * @param errorMessage Error Description
+     * @param e            Throwable Object
+     * @throws IdentityOAuth2Exception
+     */
     public static void handleException(String errorMessage, Throwable e) throws IdentityOAuth2Exception {
 
-        log.error(errorMessage);
+        log.error(errorMessage, e);
         throw new IdentityOAuth2Exception(errorMessage, e);
     }
 
+    /**
+     * Method to handle exception.
+     *
+     * @param code         Error code
+     * @param errorMessage Error description
+     * @param e            Throwable Object
+     * @throws IdentityOAuth2Exception
+     */
     public static void handleException(String code, String errorMessage, Throwable e) throws IdentityOAuth2Exception {
 
-        log.error(errorMessage);
+        log.error(errorMessage, e);
         throw new IdentityOAuth2Exception(code, errorMessage, e);
     }
 
     /**
      * Get Identity Provider alias.
      *
-     * @param identityProvider Identity provider
-     * @return token endpoint alias
+     * @param idp          Identity provider
+     * @param tenantDomain Tenant Domain
+     * @return IDP Alias
+     * @throws IdentityOAuth2Exception Error when retrieving the IDP alias
      */
-    public static String getIDPAlias(IdentityProvider identityProvider, String tenantDomain)
-            throws IdentityOAuth2Exception {
+    public static String getIDPAlias(IdentityProvider idp, String tenantDomain) throws
+            IdentityOAuth2Exception {
 
         Property oauthTokenURL = null;
         String idpAlias = null;
-        if (IdentityApplicationConstants.RESIDENT_IDP_RESERVED_NAME.equals(
-                identityProvider.getIdentityProviderName())) {
+        if (IdentityApplicationConstants.RESIDENT_IDP_RESERVED_NAME.equals(idp.getIdentityProviderName())) {
             try {
-                identityProvider = IdentityProviderManager.getInstance().getResidentIdP(tenantDomain);
-                FederatedAuthenticatorConfig[] fedAuthnConfigs =
-                        identityProvider.getFederatedAuthenticatorConfigs();
+                idp = IdentityProviderManager.getInstance().getResidentIdP(tenantDomain);
+                FederatedAuthenticatorConfig[] fedAuthnConfigs = idp.getFederatedAuthenticatorConfigs();
                 FederatedAuthenticatorConfig oauthAuthenticatorConfig =
                         IdentityApplicationManagementUtil.getFederatedAuthenticator(fedAuthnConfigs,
                                 IdentityApplicationConstants.Authenticator.OIDC.NAME);
 
                 if (oauthAuthenticatorConfig != null) {
-                    oauthTokenURL = IdentityApplicationManagementUtil.getProperty(
-                            oauthAuthenticatorConfig.getProperties(),
-                            IdentityApplicationConstants.Authenticator.OIDC.OAUTH2_TOKEN_URL);
+                    oauthTokenURL =
+                            IdentityApplicationManagementUtil.getProperty(oauthAuthenticatorConfig.getProperties(),
+                                    IdentityApplicationConstants.Authenticator.OIDC.OAUTH2_TOKEN_URL);
                 }
                 if (oauthTokenURL != null) {
                     idpAlias = oauthTokenURL.getValue();
@@ -207,12 +237,10 @@ public class TokenExchangeUtils {
                     }
                 }
             } catch (IdentityProviderManagementException e) {
-                String message = "Error while getting Resident IDP :" + e.getMessage();
-                log.error(message, e);
-                handleException(message, e);
+                handleException("Error while getting Resident IDP :" + e.getMessage(), e);
             }
         } else {
-            idpAlias = identityProvider.getAlias();
+            idpAlias = idp.getAlias();
             if (log.isDebugEnabled()) {
                 log.debug("Alias of the Federated IDP: " + idpAlias);
             }
@@ -223,14 +251,15 @@ public class TokenExchangeUtils {
     /**
      * Method to validate the signature of the JWT.
      *
-     * @param signedJWT signed JWT whose signature is to be verified
-     * @param idp       Identity provider who issued the signed JWT
-     * @return whether signature is valid, true if valid else false
+     * @param signedJWT    signed JWT whose signature is to be verified
+     * @param idp          Identity provider who issued the signed JWT
+     * @param tenantDomain Tenant Domain
+     * @return true | false whether signature is valid or not
      * @throws com.nimbusds.jose.JOSEException                         Error when verifying the signature of JWT
      * @throws org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception Error when validating the signature of JWT
      */
-    public static boolean validateSignature(SignedJWT signedJWT, IdentityProvider idp, String tenantDomain) throws
-            JOSEException, IdentityOAuth2Exception {
+    public static boolean validateSignature(SignedJWT signedJWT, IdentityProvider idp, String tenantDomain)
+            throws JOSEException, IdentityOAuth2Exception {
 
         String jwksUri = getJWKSUri(idp);
         if (isJWKSEnabled() && jwksUri != null) {
@@ -247,16 +276,16 @@ public class TokenExchangeUtils {
      * @param identityProvider               Identity Provider
      * @param authenticatedSubjectIdentifier Authenticated Subject Identifier.
      */
-    public static void setAuthorizedUser(OAuthTokenReqMessageContext tokenReqMsgCtx, IdentityProvider identityProvider,
-                                     String authenticatedSubjectIdentifier) {
+    public static void setAuthorizedUser(OAuthTokenReqMessageContext tokenReqMsgCtx,
+                                         IdentityProvider identityProvider, String authenticatedSubjectIdentifier) {
 
         AuthenticatedUser authenticatedUser;
         if (Boolean.parseBoolean(IdentityUtil.getProperty(Constants.OAUTH_SPLIT_AUTHZ_USER_3_WAY))) {
             authenticatedUser = OAuth2Util.getUserFromUserName(authenticatedSubjectIdentifier);
             authenticatedUser.setAuthenticatedSubjectIdentifier(authenticatedSubjectIdentifier);
         } else {
-            authenticatedUser = AuthenticatedUser
-                    .createFederateAuthenticatedUserFromSubjectIdentifier(authenticatedSubjectIdentifier);
+            authenticatedUser =
+                    AuthenticatedUser.createFederateAuthenticatedUserFromSubjectIdentifier(authenticatedSubjectIdentifier);
             authenticatedUser.setUserName(authenticatedSubjectIdentifier);
         }
         authenticatedUser.setFederatedUser(true);
@@ -271,16 +300,16 @@ public class TokenExchangeUtils {
      * @param currentTimeInMillis Current time
      * @param timeStampSkewMillis Time skew
      * @return true or false
+     * @throws IdentityOAuth2Exception Error when validating expiration time
      */
-    public static boolean checkExpirationTime(Date expirationTime, long currentTimeInMillis, long timeStampSkewMillis)
-            throws IdentityOAuth2Exception {
+    public static boolean checkExpirationTime(Date expirationTime, long currentTimeInMillis,
+                                              long timeStampSkewMillis) throws IdentityOAuth2Exception {
 
         long expirationTimeInMillis = expirationTime.getTime();
         if ((currentTimeInMillis + timeStampSkewMillis) > expirationTimeInMillis) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "JSON Web Token is expired." +
-                    ", Expiration Time(ms) : " + expirationTimeInMillis +
-                    ", TimeStamp Skew : " + timeStampSkewMillis +
-                    ", Current Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "JSON Web Token is expired." + ", Expiration Time(ms) "
+                    + ":" + " " + expirationTimeInMillis + ", TimeStamp Skew : " + timeStampSkewMillis + ", Current "
+                    + "Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
         }
         log.debug("Expiration Time(exp) of JWT was validated successfully.");
         return true;
@@ -293,6 +322,7 @@ public class TokenExchangeUtils {
      * @param currentTimeInMillis Current time
      * @param timeStampSkewMillis Time skew
      * @return true or false
+     * @throws IdentityOAuth2Exception Error when validating not before time
      */
     public static boolean checkNotBeforeTime(Date notBeforeTime, long currentTimeInMillis, long timeStampSkewMillis)
             throws IdentityOAuth2Exception {
@@ -302,10 +332,9 @@ public class TokenExchangeUtils {
         } else {
             long notBeforeTimeMillis = notBeforeTime.getTime();
             if (currentTimeInMillis + timeStampSkewMillis < notBeforeTimeMillis) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "JSON Web Token is used before Not_Before_Time." +
-                        ", Not Before Time(ms) : " + notBeforeTimeMillis +
-                        ", TimeStamp Skew : " + timeStampSkewMillis +
-                        ", Current Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "JSON Web Token is used before Not_Before_Time."
+                        + ", Not Before Time(ms) : " + notBeforeTimeMillis + ", TimeStamp Skew : " + timeStampSkewMillis
+                        + ", Current Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
             }
             log.debug("Not Before Time(nbf) of JWT was validated successfully.");
         }
@@ -318,7 +347,9 @@ public class TokenExchangeUtils {
      * @param issuedAtTime        Token issued time
      * @param currentTimeInMillis Current time
      * @param timeStampSkewMillis Time skew
+     * @param validityPeriod      Validity Period in Min
      * @return true or false
+     * @throws IdentityOAuth2Exception Error when validating issued at time
      */
     public static boolean validateIssuedAtTime(Date issuedAtTime, long currentTimeInMillis, long timeStampSkewMillis,
                                                int validityPeriod) throws IdentityOAuth2Exception {
@@ -329,11 +360,11 @@ public class TokenExchangeUtils {
             long issuedAtTimeMillis = issuedAtTime.getTime();
             long rejectBeforeMillis = 1000L * 60 * validityPeriod;
             if (currentTimeInMillis + timeStampSkewMillis - issuedAtTimeMillis > rejectBeforeMillis) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "JSON Web Token is issued before the allowed time." +
-                        ", Issued At Time(ms) : " + issuedAtTimeMillis +
-                        ", Reject before limit(ms) : " + rejectBeforeMillis +
-                        ", TimeStamp Skew : " + timeStampSkewMillis +
-                        ", Current Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                        "JSON Web Token is issued before the allowed time." + ", Issued At Time(ms) : "
+                                + issuedAtTimeMillis + ", Reject before limit(ms) : " + rejectBeforeMillis
+                                + ", TimeStamp Skew : " + timeStampSkewMillis + ", Current Time : "
+                                + currentTimeInMillis + ". JWT Rejected and validation terminated");
             }
             log.debug("Issued At Time(iat) of JWT was validated successfully.");
         }
@@ -347,19 +378,20 @@ public class TokenExchangeUtils {
      * @param tokReqMsgCtx     OauthTokenReqMessageContext
      * @param customClaims     Custom Claims
      * @param identityProvider Identity Provider
-     * @throws IdentityOAuth2Exception Identity Oauth2 Exception
+     * @param tenantDomain     Tenant Domain
+     * @throws IdentityOAuth2Exception Error when adding custom claims
      */
     public static void handleCustomClaims(OAuthTokenReqMessageContext tokReqMsgCtx, Map<String, Object> customClaims,
-                              IdentityProvider identityProvider, String tenantDomain, String[] registeredClaimNames)
+                                          IdentityProvider identityProvider, String tenantDomain)
             throws IdentityOAuth2Exception {
 
-        Map<String, String> customClaimMap = getCustomClaims(customClaims, registeredClaimNames);
+        Map<String, String> customClaimMap = getCustomClaims(customClaims);
         Map<String, String> mappedClaims;
         try {
             mappedClaims = ClaimsUtil.handleClaimMapping(identityProvider, customClaimMap, tenantDomain, tokReqMsgCtx);
         } catch (IdentityApplicationManagementException | IdentityException e) {
-            throw new IdentityOAuth2Exception(
-                    "Error while handling custom claim mapping for the tenant domain, " + tenantDomain, e);
+            throw new IdentityOAuth2Exception("Error while handling custom claim mapping for the tenant domain, "
+                    + tenantDomain, e);
         }
         AuthenticatedUser user = tokReqMsgCtx.getAuthorizedUser();
         if (MapUtils.isNotEmpty(mappedClaims)) {
@@ -378,9 +410,8 @@ public class TokenExchangeUtils {
         Map<String, String> tokenExchangeConfig = new HashMap<>();
         IdentityConfigParser configParser = IdentityConfigParser.getInstance();
         OMElement oauthConfigElem = configParser.getConfigElement(Constants.ConfigElements.CONFIG_ELEM_OAUTH);
-        OMElement supportedGrantTypesElem =
-                oauthConfigElem.getFirstChildWithName(getQNameWithIdentityNS(Constants.ConfigElements
-                        .SUPPORTED_GRANT_TYPES));
+        OMElement supportedGrantTypesElem = oauthConfigElem.getFirstChildWithName(
+                getQNameWithIdentityNS(Constants.ConfigElements.SUPPORTED_GRANT_TYPES));
         for (Iterator iterator = supportedGrantTypesElem.getChildElements(); iterator.hasNext(); ) {
             OMElement supportedGrantType = (OMElement) iterator.next();
             OMElement grantNameElement = supportedGrantType.getFirstChildWithName(
@@ -389,8 +420,8 @@ public class TokenExchangeUtils {
                 OMElement iatValidityPeriod = supportedGrantType.getFirstChildWithName(
                         getQNameWithIdentityNS(Constants.ConfigElements.IAT_VALIDITY_PERIOD_IN_MIN));
                 if (iatValidityPeriod != null && StringUtils.isNotEmpty(iatValidityPeriod.getText())) {
-                    tokenExchangeConfig.put(Constants.ConfigElements.IAT_VALIDITY_PERIOD_IN_MIN,
-                            iatValidityPeriod.getText().trim());
+                    tokenExchangeConfig.put(Constants.ConfigElements.IAT_VALIDITY_PERIOD_IN_MIN, iatValidityPeriod
+                            .getText().trim());
                 }
             }
         }
@@ -407,8 +438,8 @@ public class TokenExchangeUtils {
 
         X509Certificate x509Certificate = null;
         try {
-            x509Certificate = (X509Certificate) IdentityApplicationManagementUtil
-                    .decodeCertificate(idp.getCertificate());
+            x509Certificate =
+                    (X509Certificate) IdentityApplicationManagementUtil.decodeCertificate(idp.getCertificate());
         } catch (CertificateException e) {
             handleException("Error occurred while decoding public certificate of Identity Provider "
                     + idp.getIdentityProviderName() + " for tenant domain " + tenantDomain, e);
@@ -420,7 +451,7 @@ public class TokenExchangeUtils {
      * Check the validity of the x509Certificate.
      *
      * @param x509Certificate x509Certificate
-     * @throws IdentityOAuth2Exception
+     * @throws IdentityOAuth2Exception Error when checking the validity of the certificate
      */
     private static void checkCertificateValidity(X509Certificate x509Certificate) throws IdentityOAuth2Exception {
 
@@ -438,48 +469,18 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Get resident Identity Provider.
-     *
-     * @param tenantDomain tenant Domain
-     * @param jwtIssuer    issuer extracted from assertion
-     * @return resident Identity Provider
-     * @throws IdentityOAuth2Exception
-     */
-    private static IdentityProvider getResidentIDPForIssuer(String tenantDomain, String jwtIssuer) throws
-            IdentityOAuth2Exception {
-
-        String issuer = StringUtils.EMPTY;
-        IdentityProvider residentIdentityProvider;
-        try {
-            residentIdentityProvider = IdentityProviderManager.getInstance().getResidentIdP(tenantDomain);
-        } catch (IdentityProviderManagementException e) {
-            String errorMsg = String.format(Constants.ERROR_GET_RESIDENT_IDP, tenantDomain);
-            throw new IdentityOAuth2Exception(errorMsg, e);
-        }
-        FederatedAuthenticatorConfig[] fedAuthnConfigs = residentIdentityProvider.getFederatedAuthenticatorConfigs();
-        FederatedAuthenticatorConfig oauthAuthenticatorConfig =
-                IdentityApplicationManagementUtil.getFederatedAuthenticator(fedAuthnConfigs,
-                        IdentityApplicationConstants.Authenticator.OIDC.NAME);
-        if (oauthAuthenticatorConfig != null) {
-            issuer = IdentityApplicationManagementUtil.getProperty(oauthAuthenticatorConfig.getProperties(),
-                    Constants.OIDC_IDP_ENTITY_ID).getValue();
-        }
-        return jwtIssuer.equals(issuer) ? residentIdentityProvider : null;
-    }
-
-    /**
-     * To get the custom claims map using the custom claims of JWT
+     * To get the custom claims map using the custom claims of JWT.
      *
      * @param customClaims Relevant custom claims
      * @return custom claims.
      */
-    private static Map<String, String> getCustomClaims(Map<String, Object> customClaims,
-                                                       String[] registeredClaimNames) {
+    private static Map<String, String> getCustomClaims(Map<String, Object> customClaims) {
+
         Map<String, String> customClaimMap = new HashMap<>();
         for (Map.Entry<String, Object> entry : customClaims.entrySet()) {
             String entryKey = entry.getKey();
             boolean isRegisteredClaim = false;
-            for (String registeredClaimName : registeredClaimNames) {
+            for (String registeredClaimName : REGISTERED_CLAIMS) {
                 if (registeredClaimName.equals((entryKey))) {
                     isRegisteredClaim = true;
                 }
@@ -520,13 +521,13 @@ public class TokenExchangeUtils {
      * @param signedJWT Signed JWT whose signature is to be validated.
      * @param jwksUri   JWKS Uri of the identity provider.
      * @return boolean value depending on the success of the validation.
-     * @throws IdentityOAuth2Exception
+     * @throws IdentityOAuth2Exception Error when validating the signature using JWKS Uri
      */
     private static boolean validateUsingJWKSUri(SignedJWT signedJWT, String jwksUri) throws IdentityOAuth2Exception {
 
         JWKSBasedJWTValidator jwksBasedJWTValidator = new JWKSBasedJWTValidator();
-        return jwksBasedJWTValidator.validateSignature(signedJWT.getParsedString(), jwksUri, signedJWT.getHeader()
-                .getAlgorithm().getName(), null);
+        return jwksBasedJWTValidator.validateSignature(signedJWT.getParsedString(), jwksUri,
+                signedJWT.getHeader().getAlgorithm().getName(), null);
     }
 
     /**
@@ -545,14 +546,14 @@ public class TokenExchangeUtils {
                 if (StringUtils.equals(identityProviderProperty.getName(), Constants.JWKS_URI)) {
                     jwksUri = identityProviderProperty.getValue();
                     if (log.isDebugEnabled()) {
-                        log.debug("JWKS endpoint set for the identity provider : " + idp.getIdentityProviderName() +
-                                ", jwks_uri : " + jwksUri);
+                        log.debug("JWKS endpoint set for the identity provider : " + idp.getIdentityProviderName()
+                                + ", jwks_uri : " + jwksUri);
                     }
                     break;
                 } else {
                     if (log.isDebugEnabled()) {
-                        log.debug("JWKS endpoint not specified for the identity provider : " + idp
-                                .getIdentityProviderName());
+                        log.debug("JWKS endpoint not specified for the identity provider : "
+                                + idp.getIdentityProviderName());
                     }
                 }
             }
@@ -561,13 +562,14 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Method to validate the signature using certificate
+     * Method to validate the signature using certificate.
      *
-     * @param signedJWT Signed JWT whose signature is to be validated.
-     * @param idp       Identity provider to get the certificate.
+     * @param signedJWT    Signed JWT whose signature is to be validated.
+     * @param idp          Identity provider to get the certificate.
+     * @param tenantDomain Tenant Domain
      * @return boolean value depending on the success of the validation.
-     * @throws IdentityOAuth2Exception
-     * @throws JOSEException
+     * @throws IdentityOAuth2Exception Error when validating the signature of the certificate
+     * @throws JOSEException           Error when verifying the signature of the certificate
      */
     private static boolean validateUsingCertificate(SignedJWT signedJWT, IdentityProvider idp, String tenantDomain)
             throws IdentityOAuth2Exception, JOSEException {
@@ -576,8 +578,8 @@ public class TokenExchangeUtils {
         JWSHeader header = signedJWT.getHeader();
         X509Certificate x509Certificate = resolveSignerCertificate(idp, tenantDomain);
         if (x509Certificate == null) {
-            handleException("Unable to locate certificate for Identity Provider " + idp.getDisplayName() + "; JWT " +
-                            header.toString());
+            handleException("Unable to locate certificate for Identity Provider " + idp.getDisplayName() + "; JWT "
+                    + header.toString());
         }
 
         checkCertificateValidity(x509Certificate);

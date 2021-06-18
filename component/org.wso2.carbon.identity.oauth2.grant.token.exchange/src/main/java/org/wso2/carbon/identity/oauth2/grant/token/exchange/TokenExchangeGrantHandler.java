@@ -47,16 +47,15 @@ import java.util.stream.Collectors;
 
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkExpirationTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkNotBeforeTime;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateIssuedAtTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getClaimSet;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getIDP;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getSignedJWT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getIDPAlias;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getSignedJWT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleCustomClaims;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils
-        .parseTokenExchangeConfiguration;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleException;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.parseTokenExchangeConfiguration;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.setAuthorizedUser;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateIssuedAtTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateSignature;
 import static org.wso2.carbon.identity.oauth2.util.OAuth2Util.isJWT;
 
@@ -67,7 +66,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
     private static final Log log = LogFactory.getLog(TokenExchangeGrantHandler.class);
     private int validityPeriodInMin;
-    private final String[] registeredClaimNames = new String[]{"iss", "sub", "aud", "exp", "nbf", "iat", "jti"};
     private String requestedTokenType = Constants.TokenExchangeConstants.JWT_TOKEN_TYPE;
 
     /**
@@ -81,8 +79,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         Map<String, String> configMap = parseTokenExchangeConfiguration();
         setValidityPeriod(configMap.get(Constants.ConfigElements.IAT_VALIDITY_PERIOD_IN_MIN));
         if (log.isDebugEnabled()) {
-            log.debug("IAT validity period is set to: " + validityPeriodInMin + "minutes for " +
-                    "Token Exchange grant");
+            log.debug("IAT validity period is set to: " + validityPeriodInMin + "minutes for "
+                    + "Token Exchange grant");
         }
     }
 
@@ -113,13 +111,13 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         String tenantDomain = getTenantDomain(tokReqMsgCtx);
         validateRequestedTokenType(requestedTokenType);
 
-        if (Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(subjectTokenType) ||
-                (Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType))
-                        && isJWT(requestParams.get(Constants.TokenExchangeConstants.SUBJECT_TOKEN))) {
+        if (Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(subjectTokenType) || (Constants
+                .TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType)) && isJWT(requestParams
+                .get(Constants.TokenExchangeConstants.SUBJECT_TOKEN))) {
             handleJWTSubjectToken(requestParams, tokReqMsgCtx, tenantDomain, requestedAudience);
         } else {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Unsupported subject token type : " +
-                    subjectTokenType + " provided");
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Unsupported subject token type : " + subjectTokenType + " provided");
         }
         return true;
     }
@@ -152,8 +150,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     @Override
     public boolean issueRefreshToken() throws IdentityOAuth2Exception {
 
-        return OAuthServerConfiguration.getInstance()
-                .getValueForIsRefreshTokenAllowed(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        return OAuthServerConfiguration.getInstance().getValueForIsRefreshTokenAllowed(Constants.TokenExchangeConstants
+                .TOKEN_EXCHANGE_GRANT_TYPE);
     }
 
     /**
@@ -161,8 +159,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * In order to write your own way of validation, you can extend this class and override this method.
      *
      * @param customClaims a map of custom claims
-     * @param idp               - Identity Provider
-     * @param params            - Parameters sent in request
+     * @param idp          - Identity Provider
+     * @param params       - Parameters sent in request
      * @return whether the token is valid based on other claim values
      */
     protected boolean validateCustomClaims(Map<String, Object> customClaims, IdentityProvider idp,
@@ -176,13 +174,12 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * In order to enrich custom claims to JWT, you can extend this class and override this method.
      *
      * @param customClaims a map of custom claims
-     * @param idp               - Identity Provider
-     * @param params            - Parameters sent in request
+     * @param idp          - Identity Provider
+     * @param params       - Parameters sent in request
      */
     protected void enrichCustomClaims(Map<String, Object> customClaims, IdentityProvider idp,
                                       RequestParameter[] params) {
 
-        return;
     }
 
     /**
@@ -215,6 +212,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     }
 
     private String getTenantDomain(OAuthTokenReqMessageContext tokReqMsgCtx) {
+
         String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
         if (StringUtils.isEmpty(tenantDomain)) {
             tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
@@ -252,8 +250,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 if (validateSignature(signedJWT, identityProvider, tenantDomain)) {
                     log.debug("Signature/MAC validated successfully.");
                 } else {
-                    handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication " +
-                            "invalid");
+                    handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication "
+                            + "invalid");
                 }
             } catch (JOSEException e) {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature", e);
@@ -262,8 +260,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
             idpAlias = getIDPAlias(identityProvider, tenantDomain);
             if (StringUtils.isEmpty(idpAlias)) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Alias of the local Identity " +
-                        "Provider has not been configured for " + identityProvider.getIdentityProviderName());
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Alias of the local Identity Provider has not "
+                        + "been configured for " + identityProvider.getIdentityProviderName());
             }
             RequestParameter[] params = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getRequestParameters();
             audienceFound = validateAudience(audiences, identityProvider, requestedAudience, params);
@@ -285,8 +283,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             enrichCustomClaims(customClaims, identityProvider, params);
             log.debug("Subject JWT Token was validated successfully");
             if (OAuth2Util.isOIDCAuthzRequest(tokReqMsgCtx.getScope())) {
-                handleCustomClaims(tokReqMsgCtx, customClaims, identityProvider, tenantDomain,
-                        registeredClaimNames);
+                handleCustomClaims(tokReqMsgCtx, customClaims, identityProvider, tenantDomain);
             }
         } else {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for "
@@ -297,8 +294,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private void validateRequestedTokenType(String requestedTokenType) throws IdentityOAuth2Exception {
 
         if (!Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(requestedTokenType)) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Unsupported requested token type : " +
-                    requestedTokenType + " provided");
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Unsupported requested token type : " + requestedTokenType + " provided");
         }
     }
 
@@ -309,8 +306,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 validityPeriodInMin = Integer.parseInt(validityPeriodProp);
             } catch (NumberFormatException e) {
                 validityPeriodInMin = Constants.DEFAULT_IAT_VALIDITY_PERIOD_IN_MIN;
-                log.warn("Invalid value: " + validityPeriodProp + " is set for IAT validity period. Using " +
-                        "default value: " + validityPeriodInMin + " minutes.");
+                log.warn("Invalid value: " + validityPeriodProp + " is set for IAT validity period. Using "
+                        + "default value: " + validityPeriodInMin + " minutes.");
             }
         } else {
             validityPeriodInMin = Constants.DEFAULT_IAT_VALIDITY_PERIOD_IN_MIN;
@@ -325,8 +322,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory field - Issuer is empty in the given JWT");
         }
         if (claimsSet.getExpirationTime() == null) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory field - Expiration time is empty in the " +
-                    "given JWT");
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory field - Expiration time is empty in the "
+                    + "given JWT");
         }
         if (StringUtils.isEmpty(subject)) {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Mandatory field - Subject is empty in the given JWT");

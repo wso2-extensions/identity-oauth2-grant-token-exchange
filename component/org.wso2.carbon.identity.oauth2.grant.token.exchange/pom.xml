@@ -135,7 +135,7 @@
                             javax.servlet.http; version="${imp.pkg.version.javax.servlet}",
                             org.apache.oltu.oauth2.common.validators; version="${oltu.package.import.version.range}",
                             org.apache.oltu.oauth2.common; version="${oltu.package.import.version.range}",
-                            org.wso2.carbon.identity.oauth2.grant.token.exchange.*; version="${project.version}",
+                            !org.wso2.carbon.identity.oauth2.grant.token.exchange.*,
                             org.wso2.carbon.identity.oauth2.*;
                             version="${carbon.identity.oauth.package.import.version.range}",
                             org.wso2.carbon.identity.oauth.*;
@@ -157,23 +157,11 @@
                             org.apache.axiom.om; version="${axiom.osgi.version.range}"
                         </Import-Package>
                         <Export-Package>
-                            !org.wso2.carbon.identity.oauth2.grant.token.exchange.internal; version="${project.version}",
-                            org.wso2.carbon.identity.oauth2.grant.token.exchange.*; version="${project.version}"
+                            !org.wso2.carbon.identity.oauth2.grant.token.exchange.internal,
+                            org.wso2.carbon.identity.oauth2.grant.token.exchange.*;
                         </Export-Package>
                     </instructions>
                 </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.felix</groupId>
-                <artifactId>maven-scr-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>generate-scr-scrdescriptor</id>
-                        <goals>
-                            <goal>scr</goal>
-                        </goals>
-                    </execution>
-                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

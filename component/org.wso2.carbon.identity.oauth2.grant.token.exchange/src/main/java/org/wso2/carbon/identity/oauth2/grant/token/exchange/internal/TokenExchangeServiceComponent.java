@@ -21,25 +21,20 @@ package org.wso2.carbon.identity.oauth2.grant.token.exchange.internal;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.osgi.service.component.ComponentContext;
-import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.Deactivate;
 
-@Component(
-        name = "identity.oauth2.grant.token.exchange.component",
-        immediate = true
-)
+@Component(name = "identity.oauth2.grant.token.exchange.component", immediate = true)
 public class TokenExchangeServiceComponent {
 
     private static final Log log = LogFactory.getLog(TokenExchangeServiceComponent.class);
 
-    @Activate
     protected void activate(ComponentContext ctxt) {
+
         log.debug("Token Exchange grant handler is activated");
     }
 
-    @Deactivate
     protected void deactivate(ComponentContext ctxt) {
+
         log.debug("Token Exchange grant handler is deactivated");
     }
 }

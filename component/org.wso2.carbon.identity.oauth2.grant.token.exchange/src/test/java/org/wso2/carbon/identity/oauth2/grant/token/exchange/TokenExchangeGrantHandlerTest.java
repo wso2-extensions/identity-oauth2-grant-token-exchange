@@ -25,7 +25,6 @@ import com.nimbusds.jose.JWSSigner;
 import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
-
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.Assert;
