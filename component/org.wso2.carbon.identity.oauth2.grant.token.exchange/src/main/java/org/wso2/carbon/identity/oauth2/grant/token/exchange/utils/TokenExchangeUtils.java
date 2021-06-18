@@ -68,6 +68,9 @@ import java.util.Iterator;
 import java.util.Map;
 import javax.xml.namespace.QName;
 
+/**
+ * Util methods for Token Exchange Grant Type.
+ */
 public class TokenExchangeUtils {
 
     private static final Log log = LogFactory.getLog(TokenExchangeUtils.class);
@@ -87,7 +90,6 @@ public class TokenExchangeUtils {
         }
         try {
             signedJWT = SignedJWT.parse(subjectToken);
-            logJWT(signedJWT);
         } catch (ParseException e) {
             throw new IdentityOAuth2Exception("Error while parsing the JWT", e);
         }
@@ -110,7 +112,7 @@ public class TokenExchangeUtils {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given JSON Web Token");
             }
         } catch (ParseException e) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when retrieving claimsSet from the JWT");
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when retrieving claimsSet from the JWT", e);
         }
         return claimsSet;
     }
@@ -123,7 +125,7 @@ public class TokenExchangeUtils {
      * @return IdentityProvider
      * @throws IdentityOAuth2Exception error when retrieving the IdP configurations
      */
-    public static IdentityProvider getIdPByIssuer(String jwtIssuer, String tenantDomain) throws
+    public static IdentityProvider getIDP(String jwtIssuer, String tenantDomain) throws
             IdentityOAuth2Exception {
 
         IdentityProvider identityProvider = null;
@@ -141,19 +143,7 @@ public class TokenExchangeUtils {
         } catch (IdentityProviderManagementException e) {
             handleException("Error while getting the Federated Identity Provider", e);
         }
-        if (identityProvider != null) {
-            // if no IDPs were found for a given name, the IdentityProviderManager returns a dummy IDP with the
-            // name "default". We need to handle this case.
-            if (StringUtils.equalsIgnoreCase(identityProvider.getIdentityProviderName(), Constants
-                    .DEFAULT_IDP_NAME)) {
-                //check whether this jwt was issued by the resident identity provider
-                identityProvider = getResidentIDPForIssuer(tenantDomain, jwtIssuer);
-                if (identityProvider == null) {
-                    handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Registered IDP found for the JWT with issuer"
-                            + " name : " + jwtIssuer);
-                }
-            }
-        } else {
+        if (identityProvider == null) {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Registered IDP found for the JWT with issuer name : "
                     + jwtIssuer);
         }
@@ -176,6 +166,12 @@ public class TokenExchangeUtils {
 
         log.error(errorMessage);
         throw new IdentityOAuth2Exception(errorMessage, e);
+    }
+
+    public static void handleException(String code, String errorMessage, Throwable e) throws IdentityOAuth2Exception {
+
+        log.error(errorMessage);
+        throw new IdentityOAuth2Exception(code, errorMessage, e);
     }
 
     /**
@@ -212,8 +208,8 @@ public class TokenExchangeUtils {
                 }
             } catch (IdentityProviderManagementException e) {
                 String message = "Error while getting Resident IDP :" + e.getMessage();
-                log.error(message);
-                handleException(message);
+                log.error(message, e);
+                handleException(message, e);
             }
         } else {
             idpAlias = identityProvider.getAlias();
@@ -415,7 +411,7 @@ public class TokenExchangeUtils {
                     .decodeCertificate(idp.getCertificate());
         } catch (CertificateException e) {
             handleException("Error occurred while decoding public certificate of Identity Provider "
-                    + idp.getIdentityProviderName() + " for tenant domain " + tenantDomain);
+                    + idp.getIdentityProviderName() + " for tenant domain " + tenantDomain, e);
         }
         return x509Certificate;
     }
@@ -438,18 +434,6 @@ public class TokenExchangeUtils {
             throw new IdentityOAuth2Exception("X509Certificate has expired.", e);
         } catch (CertificateNotYetValidException e) {
             throw new IdentityOAuth2Exception("X509Certificate is not yet valid.", e);
-        }
-    }
-
-    /**
-     * @param signedJWT the signedJWT to be logged
-     */
-    private static void logJWT(SignedJWT signedJWT) {
-
-        if (log.isDebugEnabled()) {
-            log.debug("JWT Header: " + signedJWT.getHeader().toJSONObject().toString());
-            log.debug("JWT Payload: " + signedJWT.getPayload().toJSONObject().toString());
-            log.debug("Signature: " + signedJWT.getSignature().toString());
         }
     }
 
@@ -541,8 +525,8 @@ public class TokenExchangeUtils {
     private static boolean validateUsingJWKSUri(SignedJWT signedJWT, String jwksUri) throws IdentityOAuth2Exception {
 
         JWKSBasedJWTValidator jwksBasedJWTValidator = new JWKSBasedJWTValidator();
-        return jwksBasedJWTValidator.validateSignature(signedJWT.getParsedString(), jwksUri, signedJWT.getHeader
-                ().getAlgorithm().getName(), null);
+        return jwksBasedJWTValidator.validateSignature(signedJWT.getParsedString(), jwksUri, signedJWT.getHeader()
+                .getAlgorithm().getName(), null);
     }
 
     /**

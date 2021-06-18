@@ -24,6 +24,7 @@ package org.wso2.carbon.identity.oauth2.grant.token.exchange;
 public class Constants {
 
     public static class TokenExchangeConstants {
+
         static final String JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt";
         static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
         static final String SUBJECT_TOKEN = "subject_token";
@@ -36,6 +37,7 @@ public class Constants {
     }
 
     public static class ConfigElements {
+
         public static final String CONFIG_ELEM_OAUTH = "OAuth";
         public static final String SUPPORTED_GRANT_TYPES = "SupportedGrantTypes";
         public static final String GRANT_TYPE_NAME = "GrantTypeName";

@@ -49,7 +49,7 @@ import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenEx
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkNotBeforeTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateIssuedAtTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getClaimSet;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getIdPByIssuer;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getIDP;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getSignedJWT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getIDPAlias;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleCustomClaims;
@@ -246,7 +246,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             tokReqMsgCtx.addProperty(Constants.EXPIRY_TIME, claimsSet.getExpirationTime());
 
             validateMandatoryClaims(claimsSet, subject);
-            identityProvider = getIdPByIssuer(jwtIssuer, tenantDomain);
+            identityProvider = getIDP(jwtIssuer, tenantDomain);
 
             try {
                 if (validateSignature(signedJWT, identityProvider, tenantDomain)) {
@@ -256,7 +256,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                             "invalid");
                 }
             } catch (JOSEException e) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature");
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature", e);
             }
             checkJWTValidity(claimsSet);
 
