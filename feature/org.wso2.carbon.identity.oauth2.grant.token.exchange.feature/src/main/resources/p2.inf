@@ -1,0 +1,2 @@
+instructions.configure = \
+org.eclipse.equinox.p2.touchpoint.natives.copy(source:${installFolder}/../features/org.wso2.carbon.extension.identity.oauth2.token.exchange_${feature.version}/conf_templates/org.wso2.carbon.identity.oauth2.grant.token.exchange.unit-resolve.json,target:${installFolder}/../../resources/conf/org.wso2.carbon.identity.oauth2.grant.token.exchange.unit-resolve.json,overwrite:true);\
