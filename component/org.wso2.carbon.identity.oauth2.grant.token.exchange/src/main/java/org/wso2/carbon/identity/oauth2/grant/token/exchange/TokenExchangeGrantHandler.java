@@ -41,6 +41,7 @@ import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -195,7 +196,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     protected boolean validateAudience(List<String> audiences, IdentityProvider idp, String requestedAudience,
                                        RequestParameter[] params) {
 
-        return audiences != null && audiences.stream().anyMatch(aud -> aud.equals(idp.getAlias()));
+        List<String> aliasList = Arrays.asList(idp.getAlias().trim().split("\\s*,\\s*"));
+        return audiences != null && aliasList.stream().anyMatch(new HashSet<>(audiences)::contains);
     }
 
     /**
