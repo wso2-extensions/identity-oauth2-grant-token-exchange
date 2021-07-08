@@ -145,7 +145,7 @@ public class TokenExchangeUtils {
         } catch (IdentityProviderManagementException e) {
             handleException("Error while getting the Federated Identity Provider", e);
         }
-        if (identityProvider == null) {
+        if (identityProvider == null || !identityProvider.isEnable()) {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Registered IDP found for the JWT with issuer name "
                     + ":" + " " + jwtIssuer);
         }
