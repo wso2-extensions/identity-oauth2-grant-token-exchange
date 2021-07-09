@@ -149,6 +149,10 @@ public class TokenExchangeUtils {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Registered IDP found for the JWT with issuer name "
                     + ":" + " " + jwtIssuer);
         }
+        if (!identityProvider.isEnable()) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No active IDP found for the JWT with issuer name "
+                    + ":" + " " + jwtIssuer);
+        }
         return identityProvider;
     }
 
