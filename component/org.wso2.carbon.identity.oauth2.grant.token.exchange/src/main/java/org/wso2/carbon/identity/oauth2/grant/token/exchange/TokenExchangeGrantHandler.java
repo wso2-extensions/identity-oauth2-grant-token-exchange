@@ -211,6 +211,21 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         return claimsSet.getSubject();
     }
 
+    /**
+     * Default implementation to get IDP from the issuer name in a specific tenant
+     *
+     * @param tokReqMsgCtx OAuthTokenReqMessageContext to extract more information
+     * @param jwtIssuer    issuer of the IDP
+     * @param tenantDomain tenant domain
+     * @return IdentityProvider with @jwtIssuer
+     * @throws IdentityOAuth2Exception if an error occurred when getting IDP
+     */
+    protected IdentityProvider getIdentityProvider(OAuthTokenReqMessageContext tokReqMsgCtx, String jwtIssuer,
+            String tenantDomain) throws IdentityOAuth2Exception {
+
+        return getIDP(jwtIssuer, tenantDomain);
+    }
+
     private String getTenantDomain(OAuthTokenReqMessageContext tokReqMsgCtx) {
 
         String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
@@ -244,7 +259,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             tokReqMsgCtx.addProperty(Constants.EXPIRY_TIME, claimsSet.getExpirationTime());
 
             validateMandatoryClaims(claimsSet, subject);
-            identityProvider = getIDP(jwtIssuer, tenantDomain);
+            identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
 
             try {
                 if (validateSignature(signedJWT, identityProvider, tenantDomain)) {
