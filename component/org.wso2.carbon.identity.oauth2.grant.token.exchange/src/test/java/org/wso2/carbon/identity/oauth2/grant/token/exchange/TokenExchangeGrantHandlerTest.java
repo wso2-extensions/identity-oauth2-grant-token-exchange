@@ -31,15 +31,19 @@ import org.testng.Assert;
 import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
+import org.testng.annotations.BeforeClass;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.application.common.model.IdentityProviderProperty;
+import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenReqDTO;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils;
 import org.wso2.carbon.identity.oauth2.model.RequestParameter;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
+import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 
+import javax.servlet.http.HttpServletRequest;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
@@ -48,6 +52,7 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
 
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -60,6 +65,8 @@ public class TokenExchangeGrantHandlerTest {
     private OAuthTokenReqMessageContext tokReqMsgCtx;
     private MockedStatic<TokenExchangeUtils> tokenExchangeUtils;
     private TokenExchangeGrantHandler tokenExchangeGrantHandler;
+
+    private MockedStatic<OAuth2Util> oAuth2Util;
 
     @BeforeTest
     public void init() throws Exception {
@@ -114,6 +121,8 @@ public class TokenExchangeGrantHandlerTest {
         tokenExchangeUtils.when(() -> TokenExchangeUtils.validateIssuedAtTime(eq(signedJWT.getJWTClaimsSet()
                 .getIssueTime()), eq(System.currentTimeMillis()), Mockito.anyLong(), Mockito.anyInt()))
                 .thenReturn(true);
+        oAuth2Util = mockStatic(OAuth2Util.class);
+        oAuth2Util.when(() -> OAuth2Util.getIssuerLocation(anyString())).thenReturn(null);
         boolean isValid = tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
         Assert.assertTrue(isValid);
     }
