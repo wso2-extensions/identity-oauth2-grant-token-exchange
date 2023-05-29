@@ -21,11 +21,15 @@ package org.wso2.carbon.identity.oauth2.grant.token.exchange;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import net.minidev.json.JSONArray;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
+import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants;
+import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkUtils;
+import org.wso2.carbon.identity.application.common.model.Claim;
 import org.wso2.carbon.identity.application.common.model.ClaimMapping;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
@@ -183,6 +187,24 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     }
 
     /**
+     * @Deprecated Use {@link #validateAudience(List, IdentityProvider, String, RequestParameter[], String)} instead.
+     * Method to validate the audience value sent in the request.
+     * You can extend this class and override this method to add your validation logic.
+     *
+     * @param audiences         - Audiences claims in JWT Type Token
+     * @param idp               - Identity Provider
+     * @param requestedAudience - Audience value sent in the payload
+     * @param params            - Parameters sent in request
+     * @return whether the audience is valid or not
+     */
+    @Deprecated
+    protected boolean validateAudience(List<String> audiences, IdentityProvider idp, String requestedAudience,
+                                       RequestParameter[] params) {
+
+        return audiences != null && audiences.stream().anyMatch(aud -> aud.equals(idp.getAlias()));
+    }
+
+    /**
      * Method to validate the audience value sent in the request.
      * You can extend this class and override this method to add your validation logic.
      *
@@ -193,9 +215,23 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @return whether the audience is valid or not
      */
     protected boolean validateAudience(List<String> audiences, IdentityProvider idp, String requestedAudience,
-                                       RequestParameter[] params) {
+                                       RequestParameter[] params, String tenantDomain) throws IdentityOAuth2Exception {
 
-        return audiences != null && audiences.stream().anyMatch(aud -> aud.equals(idp.getAlias()));
+        String idpIssuerName = OAuth2Util.getIssuerLocation(tenantDomain);
+        boolean audienceFound = audiences != null && audiences.contains(idpIssuerName);
+
+        if (audienceFound) {
+            return true;
+        }
+
+        // If the audience is not found in the audiences claim, check if the issuer alias value is present.
+        String idpAlias = getIDPAlias(idp, tenantDomain);
+        if (StringUtils.isEmpty(idpAlias)) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Issuer name of the token issuer is not " +
+                    "included as a audience. Alias of the local Identity Provider has not "
+                    + "been configured for " + idp.getIdentityProviderName());
+        }
+        return audiences != null && audiences.stream().anyMatch(aud -> aud.equals(idpAlias));
     }
 
     /**
@@ -240,7 +276,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         SignedJWT signedJWT;
         IdentityProvider identityProvider;
-        String idpAlias;
         JWTClaimsSet claimsSet;
         boolean audienceFound;
 
@@ -273,15 +308,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             }
             checkJWTValidity(claimsSet);
 
-            idpAlias = getIDPAlias(identityProvider, tenantDomain);
-            if (StringUtils.isEmpty(idpAlias)) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Alias of the local Identity Provider has not "
-                        + "been configured for " + identityProvider.getIdentityProviderName());
-            }
             RequestParameter[] params = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getRequestParameters();
-            audienceFound = validateAudience(audiences, identityProvider, requestedAudience, params);
+            audienceFound = validateAudience(audiences, identityProvider, requestedAudience, params, tenantDomain);
             if (!audienceFound) {
-                handleException(Constants.TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
+                handleException(Constants.TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");;
             }
 
             boolean customClaimsValidated = validateCustomClaims(claimsSet.getClaims(), identityProvider, params);
@@ -300,15 +330,57 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             if (OAuth2Util.isOIDCAuthzRequest(tokReqMsgCtx.getScope())) {
                 handleCustomClaims(tokReqMsgCtx, customClaims, identityProvider, tenantDomain);
             }
+
+            populateIdPGroupsAttribute(tokReqMsgCtx, identityProvider, claimsSet);
         } else {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for "
                     + Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
         }
     }
 
+    private void populateIdPGroupsAttribute(OAuthTokenReqMessageContext tokReqMsgCtx, IdentityProvider identityProvider, JWTClaimsSet claimsSet) throws IdentityOAuth2Exception {
+
+        if (identityProvider.getClaimConfig() != null) {
+            ClaimMapping[] idPClaimMappings = identityProvider.getClaimConfig().getClaimMappings();
+            String remoteClaimURIOfAppRoleClaim = Arrays.stream(idPClaimMappings)
+                    .filter(claimMapping -> claimMapping.getLocalClaim().getClaimUri()
+                            .equals(FrameworkConstants.APP_ROLES_CLAIM))
+                    .map(claimMapping -> claimMapping.getRemoteClaim().getClaimUri())
+                    .findFirst()
+                    .orElse(null);
+
+            if (remoteClaimURIOfAppRoleClaim == null) {
+                return;
+            }
+
+            Object idPGroupsObj = claimsSet.getClaim(remoteClaimURIOfAppRoleClaim);
+            String idPGroups = null;
+
+            if (idPGroupsObj instanceof JSONArray) {
+                idPGroups = StringUtils.join(((JSONArray) idPGroupsObj).toArray(),
+                        FrameworkUtils.getMultiAttributeSeparator());
+            } else {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Invalid " + remoteClaimURIOfAppRoleClaim +
+                        " claim value format provided in the subject token.");
+            }
+
+            if (idPGroups != null && !idPGroups.isEmpty()) {
+                ClaimMapping claimMapping = new ClaimMapping();
+                Claim appRoleClaim = new Claim();
+                appRoleClaim.setClaimUri(FrameworkConstants.APP_ROLES_CLAIM);
+                Claim remoteClaimObj = new Claim();
+                remoteClaimObj.setClaimUri(remoteClaimURIOfAppRoleClaim);
+                claimMapping.setLocalClaim(appRoleClaim);
+                claimMapping.setRemoteClaim(remoteClaimObj);
+                tokReqMsgCtx.getAuthorizedUser().getUserAttributes().put(claimMapping, idPGroups);
+            }
+        }
+    }
+
     private void validateRequestedTokenType(String requestedTokenType) throws IdentityOAuth2Exception {
 
-        if (!Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(requestedTokenType)) {
+        if (!(Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(requestedTokenType)
+                || Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(requestedTokenType))) {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST,
                     "Unsupported requested token type : " + requestedTokenType + " provided");
         }

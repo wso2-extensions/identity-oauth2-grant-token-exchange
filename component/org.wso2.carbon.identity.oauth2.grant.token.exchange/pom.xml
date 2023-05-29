@@ -19,7 +19,7 @@
     <parent>
         <groupId>org.wso2.carbon.extension.identity.oauth2.grantType.token.exchange</groupId>
         <artifactId>identity-inbound-oauth2-grant-token-exchange</artifactId>
-        <version>1.0.4-SNAPSHOT</version>
+        <version>1.1.0-SNAPSHOT</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
@@ -141,6 +141,7 @@
                             org.wso2.carbon.identity.oauth.*;
                             version="${carbon.identity.oauth.package.import.version.range}",
                             org.wso2.carbon.identity.base; version="${carbon.identity.package.import.version.range}",
+                            org.wso2.carbon.identity.core; version="${carbon.identity.package.import.version.range}",
                             org.wso2.carbon.identity.core.util;
                             version="${carbon.identity.package.import.version.range}",
                             org.wso2.carbon.identity.application.authentication.framework.*;
