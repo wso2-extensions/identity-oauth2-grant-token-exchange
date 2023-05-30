@@ -187,7 +187,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     }
 
     /**
-     * @Deprecated Use {@link #validateAudience(List, IdentityProvider, String, RequestParameter[], String)} instead.
+     * @deprecated Use {@link #validateAudience(List, IdentityProvider, String, RequestParameter[], String)} instead.
      * Method to validate the audience value sent in the request.
      * You can extend this class and override this method to add your validation logic.
      *
