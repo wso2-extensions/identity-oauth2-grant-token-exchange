@@ -31,6 +31,7 @@ import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.wso2.carbon.identity.application.authentication.framework.exception.UserIdNotFoundException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkUtils;
@@ -345,6 +346,12 @@ public class TokenExchangeUtils {
                 authenticatedUser.setFederatedIdPName(federatedIdPName);
                 // Get the federated identity provider of the user.
                 identityProvider = getIDP(federatedIdPName, accessTokenDO.getAuthzUser().getTenantDomain());
+            } else {
+                try {
+                    authenticatedUser.setUserId(accessTokenDO.getAuthzUser().getUserId());
+                } catch (UserIdNotFoundException e) {
+                    handleException("Error while getting user id from the access token data object.", e);
+                }
             }
         } else {
             authenticatedUser.setFederatedUser(true);
