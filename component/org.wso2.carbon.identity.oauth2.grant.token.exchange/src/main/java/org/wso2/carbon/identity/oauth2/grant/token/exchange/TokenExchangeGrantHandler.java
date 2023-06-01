@@ -319,7 +319,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Custom Claims in the JWT were invalid");
             }
 
-            setAuthorizedUser(tokReqMsgCtx, identityProvider, subject);
+            setAuthorizedUser(tokReqMsgCtx, identityProvider, subject, claimsSet);
             if (log.isDebugEnabled()) {
                 log.debug("Subject(sub) found in JWT: " + subject + " and set as the Authorized User.");
             }
@@ -331,49 +331,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 handleCustomClaims(tokReqMsgCtx, customClaims, identityProvider, tenantDomain);
             }
 
-            populateIdPGroupsAttribute(tokReqMsgCtx, identityProvider, claimsSet);
         } else {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for "
                     + Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
-        }
-    }
-
-    private void populateIdPGroupsAttribute(OAuthTokenReqMessageContext tokReqMsgCtx, IdentityProvider identityProvider, JWTClaimsSet claimsSet) throws IdentityOAuth2Exception {
-
-        if (identityProvider.getClaimConfig() != null) {
-            ClaimMapping[] idPClaimMappings = identityProvider.getClaimConfig().getClaimMappings();
-            String remoteClaimURIOfAppRoleClaim = Arrays.stream(idPClaimMappings)
-                    .filter(claimMapping -> claimMapping.getLocalClaim().getClaimUri()
-                            .equals(FrameworkConstants.APP_ROLES_CLAIM))
-                    .map(claimMapping -> claimMapping.getRemoteClaim().getClaimUri())
-                    .findFirst()
-                    .orElse(null);
-
-            if (remoteClaimURIOfAppRoleClaim == null) {
-                return;
-            }
-
-            Object idPGroupsObj = claimsSet.getClaim(remoteClaimURIOfAppRoleClaim);
-            String idPGroups = null;
-
-            if (idPGroupsObj instanceof JSONArray) {
-                idPGroups = StringUtils.join(((JSONArray) idPGroupsObj).toArray(),
-                        FrameworkUtils.getMultiAttributeSeparator());
-            } else {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Invalid " + remoteClaimURIOfAppRoleClaim +
-                        " claim value format provided in the subject token.");
-            }
-
-            if (idPGroups != null && !idPGroups.isEmpty()) {
-                ClaimMapping claimMapping = new ClaimMapping();
-                Claim appRoleClaim = new Claim();
-                appRoleClaim.setClaimUri(FrameworkConstants.APP_ROLES_CLAIM);
-                Claim remoteClaimObj = new Claim();
-                remoteClaimObj.setClaimUri(remoteClaimURIOfAppRoleClaim);
-                claimMapping.setLocalClaim(appRoleClaim);
-                claimMapping.setRemoteClaim(remoteClaimObj);
-                tokReqMsgCtx.getAuthorizedUser().getUserAttributes().put(claimMapping, idPGroups);
-            }
         }
     }
 

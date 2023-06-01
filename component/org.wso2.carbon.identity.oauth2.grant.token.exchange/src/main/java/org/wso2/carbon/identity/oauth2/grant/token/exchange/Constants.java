@@ -31,6 +31,12 @@ public class Constants {
     public static final String[] REGISTERED_CLAIMS = new String[]{"iss", "sub", "aud", "exp", "nbf", "iat", "jti"};
     static final int DEFAULT_IAT_VALIDITY_PERIOD_IN_MIN = 60;
     static final String EXPIRY_TIME = "EXPIRY_TIME_JWT";
+    public static final String DEFAULT_IDP_NAME = "default";
+    public static final String OIDC_IDP_ENTITY_ID = "IdPEntityId";
+
+    public static final String LOCAL_IDP_NAME = "LOCAL";
+    public static final String ERROR_GET_RESIDENT_IDP =
+            "Error while getting Resident Identity Provider of '%s' tenant.";
 
     public static class TokenExchangeConstants {
 

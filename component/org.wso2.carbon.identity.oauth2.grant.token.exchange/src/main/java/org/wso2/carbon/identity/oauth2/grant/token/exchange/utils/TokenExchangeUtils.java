@@ -32,8 +32,11 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
+import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkUtils;
 import org.wso2.carbon.identity.application.common.IdentityApplicationManagementException;
+import org.wso2.carbon.identity.application.common.model.Claim;
+import org.wso2.carbon.identity.application.common.model.ClaimMapping;
 import org.wso2.carbon.identity.application.common.model.FederatedAuthenticatorConfig;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.application.common.model.IdentityProviderProperty;
@@ -47,6 +50,7 @@ import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants;
+import org.wso2.carbon.identity.oauth2.model.AccessTokenDO;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.util.ClaimsUtil;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
@@ -61,13 +65,16 @@ import java.security.cert.CertificateNotYetValidException;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPublicKey;
 import java.text.ParseException;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+
 import javax.xml.namespace.QName;
 
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.DEFAULT_IDP_NAME;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.REGISTERED_CLAIMS;
 
 /**
@@ -136,11 +143,14 @@ public class TokenExchangeUtils {
                             .IDP_ISSUER_NAME, jwtIssuer, tenantDomain, true);
             if (identityProvider == null) {
                 if (log.isDebugEnabled()) {
-                    log.debug("IDP not found when retrieving for IDP using property: "
-                            + IdentityApplicationConstants.IDP_ISSUER_NAME + " with value: " + jwtIssuer
-                            + ". Attempting to retrieve IDP using IDP Name as issuer.");
+                    log.debug("IDP not found when retrieving for IDP using property: " +
+                            IdentityApplicationConstants.IDP_ISSUER_NAME + " with value: " + jwtIssuer +
+                            ". Attempting to retrieve IDP using IDP Name as issuer.");
                 }
                 identityProvider = IdentityProviderManager.getInstance().getIdPByName(jwtIssuer, tenantDomain, true);
+            }
+            if (identityProvider == null || DEFAULT_IDP_NAME.equals(identityProvider.getIdentityProviderName())) {
+                identityProvider = getResidentIDPForIssuer(tenantDomain, jwtIssuer);
             }
         } catch (IdentityProviderManagementException e) {
             handleException("Error while getting the Federated Identity Provider", e);
@@ -274,12 +284,15 @@ public class TokenExchangeUtils {
     }
 
     /**
+     * @deprecated Use {@link #setAuthorizedUser(OAuthTokenReqMessageContext, IdentityProvider, String, JWTClaimsSet)}
+     * instead.
      * To set the authorized user to message context.
      *
      * @param tokenReqMsgCtx                 Token request message context.
      * @param identityProvider               Identity Provider
      * @param authenticatedSubjectIdentifier Authenticated Subject Identifier.
      */
+    @Deprecated
     public static void setAuthorizedUser(OAuthTokenReqMessageContext tokenReqMsgCtx,
                                          IdentityProvider identityProvider, String authenticatedSubjectIdentifier) {
 
@@ -295,6 +308,120 @@ public class TokenExchangeUtils {
         authenticatedUser.setFederatedUser(true);
         authenticatedUser.setFederatedIdPName(identityProvider.getIdentityProviderName());
         tokenReqMsgCtx.setAuthorizedUser(authenticatedUser);
+    }
+
+    /**
+     * To set the authorized user to message context.
+     *
+     * @param tokenReqMsgCtx                 Token request message context.
+     * @param identityProvider               Identity Provider
+     * @param authenticatedSubjectIdentifier Authenticated Subject Identifier.
+     * @param claimsSet                      Claim Set in the subject token.
+     * @throws IdentityOAuth2Exception       Identity OAuth2 Exception.
+     */
+    public static void setAuthorizedUser(OAuthTokenReqMessageContext tokenReqMsgCtx,
+                                         IdentityProvider identityProvider, String authenticatedSubjectIdentifier,
+                                         JWTClaimsSet claimsSet) throws IdentityOAuth2Exception {
+
+        AuthenticatedUser authenticatedUser;
+        if (Boolean.parseBoolean(IdentityUtil.getProperty(Constants.OAUTH_SPLIT_AUTHZ_USER_3_WAY))) {
+            authenticatedUser = OAuth2Util.getUserFromUserName(authenticatedSubjectIdentifier);
+            authenticatedUser.setAuthenticatedSubjectIdentifier(authenticatedSubjectIdentifier);
+        } else {
+            authenticatedUser =
+                    AuthenticatedUser.createFederateAuthenticatedUserFromSubjectIdentifier(authenticatedSubjectIdentifier);
+            authenticatedUser.setUserName(authenticatedSubjectIdentifier);
+        }
+
+        // If the IdP is the resident idp, fetch the access token data object for further processing.
+        if (Constants.LOCAL_IDP_NAME.equals(identityProvider.getIdentityProviderName())) {
+            AccessTokenDO accessTokenDO = OAuth2Util.getAccessTokenDOFromTokenIdentifier(
+                    claimsSet.getJWTID(), false);
+            boolean isFederated = accessTokenDO.getAuthzUser().isFederatedUser();
+            authenticatedUser.setFederatedUser(isFederated);
+            authenticatedUser.setTenantDomain(accessTokenDO.getAuthzUser().getTenantDomain());
+            if (isFederated) {
+                String federatedIdPName = accessTokenDO.getAuthzUser().getFederatedIdPName();
+                authenticatedUser.setFederatedIdPName(federatedIdPName);
+                // Get the federated identity provider of the user.
+                identityProvider = getIDP(federatedIdPName, accessTokenDO.getAuthzUser().getTenantDomain());
+            }
+        } else {
+            authenticatedUser.setFederatedUser(true);
+            authenticatedUser.setFederatedIdPName(identityProvider.getIdentityProviderName());
+        }
+        tokenReqMsgCtx.setAuthorizedUser(authenticatedUser);
+        populateIdPGroupsAttribute(tokenReqMsgCtx, identityProvider, claimsSet);
+    }
+
+    private static void populateIdPGroupsAttribute(OAuthTokenReqMessageContext tokReqMsgCtx,
+                                                   IdentityProvider identityProvider, JWTClaimsSet claimsSet)
+            throws IdentityOAuth2Exception {
+
+        if (identityProvider.getClaimConfig() != null) {
+            ClaimMapping[] idPClaimMappings = identityProvider.getClaimConfig().getClaimMappings();
+            String remoteClaimURIOfAppRoleClaim = Arrays.stream(idPClaimMappings)
+                    .filter(claimMapping -> claimMapping.getLocalClaim().getClaimUri()
+                            .equals(FrameworkConstants.GROUPS_CLAIM))
+                    .map(claimMapping -> claimMapping.getRemoteClaim().getClaimUri())
+                    .findFirst()
+                    .orElse(null);
+
+            if (remoteClaimURIOfAppRoleClaim == null) {
+                return;
+            }
+
+            Object idPGroupsObj = claimsSet.getClaim(remoteClaimURIOfAppRoleClaim);
+            String idPGroups = null;
+
+            if (idPGroupsObj instanceof JSONArray) {
+                idPGroups = StringUtils.join(((JSONArray) idPGroupsObj).toArray(),
+                        FrameworkUtils.getMultiAttributeSeparator());
+            } else {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Invalid " + remoteClaimURIOfAppRoleClaim +
+                        " claim value format provided in the subject token.");
+            }
+
+            if (idPGroups != null && !idPGroups.isEmpty()) {
+                ClaimMapping claimMapping = new ClaimMapping();
+                Claim appRoleClaim = new Claim();
+                appRoleClaim.setClaimUri(FrameworkConstants.GROUPS_CLAIM);
+                Claim remoteClaimObj = new Claim();
+                remoteClaimObj.setClaimUri(remoteClaimURIOfAppRoleClaim);
+                claimMapping.setLocalClaim(appRoleClaim);
+                claimMapping.setRemoteClaim(remoteClaimObj);
+                tokReqMsgCtx.getAuthorizedUser().getUserAttributes().put(claimMapping, idPGroups);
+            }
+        }
+    }
+
+    /**
+     * Get resident Identity Provider.
+     *
+     * @param tenantDomain tenant Domain.
+     * @param jwtIssuer    issuer extracted from assertion.
+     * @return resident Identity Provider.
+     * @throws IdentityOAuth2Exception Identity OAuth2 Exception.
+     */
+    public static IdentityProvider getResidentIDPForIssuer(String tenantDomain, String jwtIssuer) throws IdentityOAuth2Exception {
+
+        String issuer = StringUtils.EMPTY;
+        IdentityProvider residentIdentityProvider;
+        try {
+            residentIdentityProvider = IdentityProviderManager.getInstance().getResidentIdP(tenantDomain);
+        } catch (IdentityProviderManagementException e) {
+            String errorMsg = String.format(Constants.ERROR_GET_RESIDENT_IDP, tenantDomain);
+            throw new IdentityOAuth2Exception(errorMsg, e);
+        }
+        FederatedAuthenticatorConfig[] fedAuthnConfigs = residentIdentityProvider.getFederatedAuthenticatorConfigs();
+        FederatedAuthenticatorConfig oauthAuthenticatorConfig =
+                IdentityApplicationManagementUtil.getFederatedAuthenticator(fedAuthnConfigs,
+                        IdentityApplicationConstants.Authenticator.OIDC.NAME);
+        if (oauthAuthenticatorConfig != null) {
+            issuer = IdentityApplicationManagementUtil.getProperty(oauthAuthenticatorConfig.getProperties(),
+                    Constants.OIDC_IDP_ENTITY_ID).getValue();
+        }
+        return jwtIssuer.equals(issuer) ? residentIdentityProvider : null;
     }
 
     /**
