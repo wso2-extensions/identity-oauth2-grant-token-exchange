@@ -362,7 +362,7 @@ public class TokenExchangeUtils {
             ClaimMapping[] idPClaimMappings = identityProvider.getClaimConfig().getClaimMappings();
             String remoteClaimURIOfAppRoleClaim = Arrays.stream(idPClaimMappings)
                     .filter(claimMapping -> claimMapping.getLocalClaim().getClaimUri()
-                            .equals(FrameworkConstants.APP_ROLES_CLAIM))
+                            .equals(FrameworkConstants.GROUPS_CLAIM))
                     .map(claimMapping -> claimMapping.getRemoteClaim().getClaimUri())
                     .findFirst()
                     .orElse(null);
@@ -385,7 +385,7 @@ public class TokenExchangeUtils {
             if (idPGroups != null && !idPGroups.isEmpty()) {
                 ClaimMapping claimMapping = new ClaimMapping();
                 Claim appRoleClaim = new Claim();
-                appRoleClaim.setClaimUri(FrameworkConstants.APP_ROLES_CLAIM);
+                appRoleClaim.setClaimUri(FrameworkConstants.GROUPS_CLAIM);
                 Claim remoteClaimObj = new Claim();
                 remoteClaimObj.setClaimUri(remoteClaimURIOfAppRoleClaim);
                 claimMapping.setLocalClaim(appRoleClaim);
