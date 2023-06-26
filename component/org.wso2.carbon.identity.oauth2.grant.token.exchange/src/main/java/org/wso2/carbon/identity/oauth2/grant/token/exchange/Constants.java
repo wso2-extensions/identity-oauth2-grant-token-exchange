@@ -28,7 +28,8 @@ public class Constants {
     public static final String JWKS_VALIDATION_ENABLE_CONFIG = "JWTValidatorConfigs.Enable";
     public static final String JWKS_URI = "jwksUri";
     public static final String OAUTH_SPLIT_AUTHZ_USER_3_WAY = "OAuth.SplitAuthzUser3Way";
-    public static final String[] REGISTERED_CLAIMS = new String[]{"iss", "sub", "aud", "exp", "nbf", "iat", "jti"};
+    public static final String[] REGISTERED_CLAIMS =
+            new String[]{"iss", "sub", "aud", "exp", "nbf", "iat", "jti", "scope"};
     static final int DEFAULT_IAT_VALIDITY_PERIOD_IN_MIN = 60;
     static final String EXPIRY_TIME = "EXPIRY_TIME_JWT";
     public static final String DEFAULT_IDP_NAME = "default";
