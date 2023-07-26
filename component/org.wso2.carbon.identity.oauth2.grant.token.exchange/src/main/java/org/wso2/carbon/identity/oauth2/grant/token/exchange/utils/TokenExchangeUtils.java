@@ -530,8 +530,13 @@ public class TokenExchangeUtils {
     private static boolean validateUsingJWKSUri(SignedJWT signedJWT, String jwksUri) throws IdentityOAuth2Exception {
 
         JWKSBasedJWTValidator jwksBasedJWTValidator = new JWKSBasedJWTValidator();
-        return jwksBasedJWTValidator.validateSignature(signedJWT.getParsedString(), jwksUri,
-                signedJWT.getHeader().getAlgorithm().getName(), null);
+        try {
+            return jwksBasedJWTValidator.validateSignature(signedJWT.getParsedString(), jwksUri,
+                    signedJWT.getHeader().getAlgorithm().getName(), null);
+        } catch (IdentityOAuth2Exception e) {
+            log.error("Error occurred while validating the signature using JWKS URI.", e);
+            throw e;
+        }
     }
 
     /**
