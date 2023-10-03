@@ -47,10 +47,12 @@ import org.wso2.carbon.identity.application.common.util.IdentityApplicationManag
 import org.wso2.carbon.identity.base.IdentityException;
 import org.wso2.carbon.identity.core.util.IdentityConfigParser;
 import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
+import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants;
+import org.wso2.carbon.identity.oauth2.grant.token.exchange.internal.TokenExchangeComponentServiceHolder;
 import org.wso2.carbon.identity.oauth2.model.AccessTokenDO;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.util.ClaimsUtil;
@@ -58,6 +60,12 @@ import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.identity.oauth2.validators.jwt.JWKSBasedJWTValidator;
 import org.wso2.carbon.idp.mgt.IdentityProviderManagementException;
 import org.wso2.carbon.idp.mgt.IdentityProviderManager;
+import org.wso2.carbon.user.api.UserStoreException;
+import org.wso2.carbon.user.core.UserRealm;
+import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
+import org.wso2.carbon.user.core.common.User;
+import org.wso2.carbon.user.core.service.RealmService;
+import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
 import java.security.PublicKey;
 import java.security.cert.CertificateException;
@@ -324,14 +332,24 @@ public class TokenExchangeUtils {
                                          IdentityProvider identityProvider, String authenticatedSubjectIdentifier,
                                          JWTClaimsSet claimsSet) throws IdentityOAuth2Exception {
 
-        AuthenticatedUser authenticatedUser;
-        if (Boolean.parseBoolean(IdentityUtil.getProperty(Constants.OAUTH_SPLIT_AUTHZ_USER_3_WAY))) {
-            authenticatedUser = OAuth2Util.getUserFromUserName(authenticatedSubjectIdentifier);
-            authenticatedUser.setAuthenticatedSubjectIdentifier(authenticatedSubjectIdentifier);
-        } else {
-            authenticatedUser =
-                    AuthenticatedUser.createFederateAuthenticatedUserFromSubjectIdentifier(authenticatedSubjectIdentifier);
-            authenticatedUser.setUserName(authenticatedSubjectIdentifier);
+        AuthenticatedUser authenticatedUser = null;
+
+        // TODO: introduce idp config
+        boolean associateLocalUser = true;
+        if (associateLocalUser) {
+            authenticatedUser = getAssociatedLocalUser(tokenReqMsgCtx, authenticatedSubjectIdentifier);
+        }
+
+        if (authenticatedUser == null) {
+            if (Boolean.parseBoolean(IdentityUtil.getProperty(Constants.OAUTH_SPLIT_AUTHZ_USER_3_WAY))) {
+                authenticatedUser = OAuth2Util.getUserFromUserName(authenticatedSubjectIdentifier);
+                authenticatedUser.setAuthenticatedSubjectIdentifier(authenticatedSubjectIdentifier);
+            } else {
+                authenticatedUser =
+                        AuthenticatedUser.createFederateAuthenticatedUserFromSubjectIdentifier(
+                                authenticatedSubjectIdentifier);
+                authenticatedUser.setUserName(authenticatedSubjectIdentifier);
+            }
         }
 
         // If the IdP is the resident idp, fetch the access token data object for further processing.
@@ -354,8 +372,10 @@ public class TokenExchangeUtils {
                 }
             }
         } else {
-            authenticatedUser.setFederatedUser(true);
-            authenticatedUser.setFederatedIdPName(identityProvider.getIdentityProviderName());
+            if (!associateLocalUser) {
+                authenticatedUser.setFederatedUser(true);
+                authenticatedUser.setFederatedIdPName(identityProvider.getIdentityProviderName());
+            }
         }
         tokenReqMsgCtx.setAuthorizedUser(authenticatedUser);
         populateIdPGroupsAttribute(tokenReqMsgCtx, identityProvider, claimsSet);
@@ -748,5 +768,38 @@ public class TokenExchangeUtils {
         }
         // At this point 'verifier' will never be null;
         return signedJWT.verify(verifier);
+    }
+
+    private static AuthenticatedUser getAssociatedLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx,
+                                                            String subjectIdentifier) throws IdentityOAuth2Exception {
+
+        AuthenticatedUser localUser = null;
+        RealmService realmService = TokenExchangeComponentServiceHolder.getInstance().getRealmService();
+        String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
+
+        if (StringUtils.isEmpty(tenantDomain)) {
+            tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
+        }
+        int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
+
+        try {
+            UserRealm realm = (UserRealm) realmService.getTenantUserRealm(tenantId);
+            // TODO: handle secondary user stores
+            AbstractUserStoreManager userStoreManager;
+
+            if (realm.getUserStoreManager().getSecondaryUserStoreManager() != null) {
+                userStoreManager = (AbstractUserStoreManager) realm.getUserStoreManager().getSecondaryUserStoreManager();
+            } else {
+                userStoreManager = (AbstractUserStoreManager) realm.getUserStoreManager();
+            }
+
+             if(userStoreManager.isExistingUser(subjectIdentifier)) {
+                 User user = userStoreManager.getUser(null, subjectIdentifier);
+                 localUser = new AuthenticatedUser(user);
+             }
+        } catch (UserStoreException e) {
+            handleException("Error while resolving local user for subject: " + subjectIdentifier);
+        }
+        return localUser;
     }
 }

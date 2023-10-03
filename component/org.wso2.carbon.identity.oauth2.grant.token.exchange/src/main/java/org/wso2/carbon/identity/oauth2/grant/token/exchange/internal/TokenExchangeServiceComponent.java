@@ -22,6 +22,10 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.osgi.service.component.annotations.ReferencePolicy;
+import org.wso2.carbon.user.core.service.RealmService;
 
 @Component(name = "identity.oauth2.grant.token.exchange.component", immediate = true)
 public class TokenExchangeServiceComponent {
@@ -36,5 +40,28 @@ public class TokenExchangeServiceComponent {
     protected void deactivate(ComponentContext ctxt) {
 
         log.debug("Token Exchange grant handler is deactivated");
+    }
+
+    @Reference(
+            name = "realm.service",
+            service = RealmService.class,
+            cardinality = ReferenceCardinality.MANDATORY,
+            policy = ReferencePolicy.DYNAMIC,
+            unbind = "unsetRealmService"
+    )
+    protected void setRealmService(RealmService realmService) {
+
+        if (log.isDebugEnabled()) {
+            log.debug("Setting the Realm Service");
+        }
+        TokenExchangeComponentServiceHolder.getInstance().setRealmService(realmService);
+    }
+
+    protected void unsetRealmService(RealmService realmService) {
+
+        if (log.isDebugEnabled()) {
+            log.debug("Unsetting the Realm Service");
+        }
+        TokenExchangeComponentServiceHolder.getInstance().setRealmService(null);
     }
 }
