@@ -80,6 +80,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.xml.namespace.QName;
 
@@ -337,7 +339,7 @@ public class TokenExchangeUtils {
         // TODO: introduce idp config
         boolean associateLocalUser = true;
         if (associateLocalUser) {
-            authenticatedUser = getAssociatedLocalUser(tokenReqMsgCtx, authenticatedSubjectIdentifier);
+            authenticatedUser = getAssociatedLocalUser(tokenReqMsgCtx, claimsSet);
         }
 
         if (authenticatedUser == null) {
@@ -771,9 +773,10 @@ public class TokenExchangeUtils {
     }
 
     private static AuthenticatedUser getAssociatedLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx,
-                                                            String subjectIdentifier) throws IdentityOAuth2Exception {
+                                                            JWTClaimsSet claimsSet) throws IdentityOAuth2Exception {
 
         AuthenticatedUser localUser = null;
+        String subjectIdentifier = resolveSubjectIdentifier(claimsSet);
         RealmService realmService = TokenExchangeComponentServiceHolder.getInstance().getRealmService();
         String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
 
@@ -801,5 +804,30 @@ public class TokenExchangeUtils {
             handleException("Error while resolving local user for subject: " + subjectIdentifier);
         }
         return localUser;
+    }
+
+    private static String resolveSubjectIdentifier(JWTClaimsSet claimsSet) throws IdentityOAuth2Exception {
+
+        //TODO: make the lookup claim configurable
+        String lookupClaim = "email";
+        Object subjectIdentifierObj = claimsSet.getClaim(lookupClaim);
+        String subjectIdentifier = null;
+        if (subjectIdentifierObj instanceof String) {
+            subjectIdentifier = (String) subjectIdentifierObj;
+        }
+
+        if (lookupClaim.equals("email") && StringUtils.isBlank(subjectIdentifier)) {
+            String regex = "^(.+)@(.+)$";
+            Pattern pattern = Pattern.compile(regex);
+            Matcher matcher = pattern.matcher(claimsSet.getSubject());
+            if (matcher.matches()) {
+                subjectIdentifier = claimsSet.getSubject();
+            }
+        }
+
+        if (StringUtils.isBlank(subjectIdentifier)) {
+            throw new IdentityOAuth2Exception("Required claim not found in the token");
+        }
+        return subjectIdentifier;
     }
 }
