@@ -36,11 +36,15 @@ import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenRespDTO;
+import org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils;
 import org.wso2.carbon.identity.oauth2.model.RequestParameter;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.token.handlers.grant.AbstractAuthorizationGrantHandler;
 import org.wso2.carbon.identity.oauth2.util.ClaimsUtil;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
+import org.wso2.carbon.user.api.UserStoreException;
+import org.wso2.carbon.user.core.UserCoreConstants;
+import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
 import java.util.Arrays;
@@ -119,11 +123,35 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 .TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType)) && isJWT(requestParams
                 .get(Constants.TokenExchangeConstants.SUBJECT_TOKEN))) {
             handleJWTSubjectToken(requestParams, tokReqMsgCtx, tenantDomain, requestedAudience);
+            validateLocalUser(tokReqMsgCtx);
         } else {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST,
                     "Unsupported subject token type : " + subjectTokenType + " provided");
         }
         return true;
+    }
+
+    private void validateLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
+
+        try {
+            AbstractUserStoreManager userStoreManager = TokenExchangeUtils.getUserStoreManager(tokReqMsgCtx);
+            Map<String, String> values = userStoreManager.getUserClaimValues(
+                    tokReqMsgCtx.getAuthorizedUser().getUserName(), new String[]{
+                    Constants.ACCOUNT_LOCKED_CLAIM, Constants.ACCOUNT_DISABLED_CLAIM}, UserCoreConstants.DEFAULT_PROFILE);
+            boolean isAccountLocked = Boolean.parseBoolean(values.get(Constants.ACCOUNT_LOCKED_CLAIM));
+            boolean isAccountDisabled = Boolean.parseBoolean(values.get(Constants.ACCOUNT_DISABLED_CLAIM));
+
+            if (isAccountLocked) {
+                throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_REQUEST, "Local user account locked");
+            }
+
+            if (isAccountDisabled) {
+                throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_REQUEST, "Local user account disabled");
+            }
+
+        } catch (UserStoreException e) {
+            throw new IdentityOAuth2Exception("Error while retrieving user claim value", e);
+        }
     }
 
     /**

@@ -780,25 +780,8 @@ public class TokenExchangeUtils {
 
         AuthenticatedUser localUser = null;
         String subjectIdentifier = resolveSubjectIdentifier(claimsSet);
-        RealmService realmService = TokenExchangeComponentServiceHolder.getInstance().getRealmService();
-        String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
-
-        if (StringUtils.isEmpty(tenantDomain)) {
-            tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
-        }
-        int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
-
+        AbstractUserStoreManager userStoreManager = getUserStoreManager(tokReqMsgCtx);
         try {
-            UserRealm realm = (UserRealm) realmService.getTenantUserRealm(tenantId);
-            // TODO: handle secondary user stores
-            AbstractUserStoreManager userStoreManager;
-
-            if (realm.getUserStoreManager().getSecondaryUserStoreManager() != null) {
-                userStoreManager = (AbstractUserStoreManager) realm.getUserStoreManager().getSecondaryUserStoreManager();
-            } else {
-                userStoreManager = (AbstractUserStoreManager) realm.getUserStoreManager();
-            }
-
              if(userStoreManager.isExistingUser(subjectIdentifier)) {
                  User user = userStoreManager.getUser(null, subjectIdentifier);
                  localUser = new AuthenticatedUser(user);
@@ -844,5 +827,31 @@ public class TokenExchangeUtils {
             handleException(OAuth2ErrorCodes.SERVER_ERROR, "Error while getting idp configuration: " + e.getMessage());
         }
         return externalIdPConfig;
+    }
+
+    public static AbstractUserStoreManager getUserStoreManager(OAuthTokenReqMessageContext tokReqMsgCtx)
+            throws IdentityOAuth2Exception {
+
+        RealmService realmService = TokenExchangeComponentServiceHolder.getInstance().getRealmService();
+        String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
+        AbstractUserStoreManager userStoreManager = null;
+
+        if (StringUtils.isEmpty(tenantDomain)) {
+            tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
+        }
+        int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
+
+        try {
+            UserRealm realm = (UserRealm) realmService.getTenantUserRealm(tenantId);
+
+            if (realm.getUserStoreManager().getSecondaryUserStoreManager() != null) {
+                userStoreManager = (AbstractUserStoreManager) realm.getUserStoreManager().getSecondaryUserStoreManager();
+            } else {
+                userStoreManager = (AbstractUserStoreManager) realm.getUserStoreManager();
+            }
+        } catch (UserStoreException e) {
+            handleException("Error while getting user store manager: " + e.getMessage());
+        }
+        return userStoreManager;
     }
 }
