@@ -31,6 +31,8 @@ import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.wso2.carbon.identity.application.authentication.framework.config.ConfigurationFacade;
+import org.wso2.carbon.identity.application.authentication.framework.config.model.ExternalIdPConfig;
 import org.wso2.carbon.identity.application.authentication.framework.exception.UserIdNotFoundException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants;
@@ -336,9 +338,10 @@ public class TokenExchangeUtils {
 
         AuthenticatedUser authenticatedUser = null;
 
-        // TODO: introduce idp config
-        boolean associateLocalUser = true;
-        if (associateLocalUser) {
+        ExternalIdPConfig idPConfig = getExternalIdpConfig(identityProvider.getIdentityProviderName(),
+                tokenReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain());
+
+        if (idPConfig != null && idPConfig.isAssociateLocalUserEnabled()) {
             authenticatedUser = getAssociatedLocalUser(tokenReqMsgCtx, claimsSet);
         }
 
@@ -374,7 +377,7 @@ public class TokenExchangeUtils {
                 }
             }
         } else {
-            if (!associateLocalUser) {
+            if (idPConfig != null && !idPConfig.isAssociateLocalUserEnabled()) {
                 authenticatedUser.setFederatedUser(true);
                 authenticatedUser.setFederatedIdPName(identityProvider.getIdentityProviderName());
             }
@@ -829,5 +832,17 @@ public class TokenExchangeUtils {
             throw new IdentityOAuth2Exception("Required claim not found in the token");
         }
         return subjectIdentifier;
+    }
+
+    private static ExternalIdPConfig getExternalIdpConfig(String idpName, String tenantDomain)
+            throws IdentityOAuth2Exception {
+
+        ExternalIdPConfig externalIdPConfig = null;
+        try {
+            externalIdPConfig = ConfigurationFacade.getInstance().getIdPConfigByName(idpName, tenantDomain);
+        } catch (IdentityProviderManagementException e) {
+            handleException(OAuth2ErrorCodes.SERVER_ERROR, "Error while getting idp configuration: " + e.getMessage());
+        }
+        return externalIdPConfig;
     }
 }
