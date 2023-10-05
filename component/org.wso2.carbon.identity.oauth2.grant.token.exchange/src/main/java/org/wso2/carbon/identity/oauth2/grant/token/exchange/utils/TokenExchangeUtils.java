@@ -342,7 +342,10 @@ public class TokenExchangeUtils {
                 tokenReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain());
 
         if (idPConfig != null && idPConfig.isAssociateLocalUserEnabled()) {
-            authenticatedUser = getAssociatedLocalUser(tokenReqMsgCtx, claimsSet);
+            User localUser = getAssociatedLocalUser(tokenReqMsgCtx, claimsSet);
+            if (localUser != null) {
+                authenticatedUser = new AuthenticatedUser(localUser);
+            }
         }
 
         if (authenticatedUser == null) {
@@ -775,16 +778,15 @@ public class TokenExchangeUtils {
         return signedJWT.verify(verifier);
     }
 
-    private static AuthenticatedUser getAssociatedLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx,
+    public static User getAssociatedLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx,
                                                             JWTClaimsSet claimsSet) throws IdentityOAuth2Exception {
 
-        AuthenticatedUser localUser = null;
+        User localUser = null;
         String subjectIdentifier = resolveSubjectIdentifier(claimsSet);
         AbstractUserStoreManager userStoreManager = getUserStoreManager(tokReqMsgCtx);
         try {
              if(userStoreManager.isExistingUser(subjectIdentifier)) {
-                 User user = userStoreManager.getUser(null, subjectIdentifier);
-                 localUser = new AuthenticatedUser(user);
+                 localUser = userStoreManager.getUser(null, subjectIdentifier);
              }
         } catch (UserStoreException e) {
             handleException("Error while resolving local user for subject: " + subjectIdentifier);
