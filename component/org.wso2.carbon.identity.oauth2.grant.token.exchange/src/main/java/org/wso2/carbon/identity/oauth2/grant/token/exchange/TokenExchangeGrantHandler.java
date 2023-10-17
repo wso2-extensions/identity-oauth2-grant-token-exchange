@@ -32,31 +32,28 @@ import org.wso2.carbon.identity.application.authentication.framework.util.Framew
 import org.wso2.carbon.identity.application.common.model.Claim;
 import org.wso2.carbon.identity.application.common.model.ClaimMapping;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
+import org.wso2.carbon.identity.event.IdentityEventException;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenRespDTO;
+import org.wso2.carbon.identity.oauth2.grant.token.exchange.internal.TokenExchangeServiceComponent;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils;
 import org.wso2.carbon.identity.oauth2.model.RequestParameter;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.token.handlers.grant.AbstractAuthorizationGrantHandler;
 import org.wso2.carbon.identity.oauth2.util.ClaimsUtil;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
-import org.wso2.carbon.identity.recovery.IdentityRecoveryException;
-import org.wso2.carbon.identity.recovery.RecoveryScenarios;
-import org.wso2.carbon.identity.recovery.model.UserRecoveryData;
-import org.wso2.carbon.user.api.UserStoreException;
-import org.wso2.carbon.user.core.UserCoreConstants;
+import org.wso2.carbon.user.core.UserStoreException;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
-import org.wso2.carbon.user.core.common.User;
+import org.wso2.carbon.user.core.listener.UserOperationEventListener;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
-import org.wso2.carbon.identity.recovery.store.JDBCRecoveryDataStore;
-import org.wso2.carbon.identity.recovery.store.UserRecoveryDataStore;
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkExpirationTime;
@@ -129,7 +126,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 .TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType)) && isJWT(requestParams
                 .get(Constants.TokenExchangeConstants.SUBJECT_TOKEN))) {
             handleJWTSubjectToken(requestParams, tokReqMsgCtx, tenantDomain, requestedAudience);
-            validateLocalUser(tokReqMsgCtx, requestParams);
+            if (tokReqMsgCtx.getAuthorizedUser() != null && !tokReqMsgCtx.getAuthorizedUser().isFederatedUser()) {
+                validateLocalUser(tokReqMsgCtx, requestParams);
+            }
         } else {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST,
                     "Unsupported subject token type : " + subjectTokenType + " provided");
@@ -140,47 +139,18 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private void validateLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx, Map<String, String> requestParams)
             throws IdentityOAuth2Exception {
 
-        try {
-            AbstractUserStoreManager userStoreManager = TokenExchangeUtils.getUserStoreManager(tokReqMsgCtx);
-            Map<String, String> values = userStoreManager.getUserClaimValues(
-                    tokReqMsgCtx.getAuthorizedUser().getUserName(), new String[]{
-                    Constants.ACCOUNT_LOCKED_CLAIM, Constants.ACCOUNT_DISABLED_CLAIM},
-                    UserCoreConstants.DEFAULT_PROFILE);
-            boolean isAccountLocked = Boolean.parseBoolean(values.get(Constants.ACCOUNT_LOCKED_CLAIM));
-            boolean isAccountDisabled = Boolean.parseBoolean(values.get(Constants.ACCOUNT_DISABLED_CLAIM));
-
-            if (isAccountLocked) {
-                throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_REQUEST, "Local user account locked");
+        AbstractUserStoreManager userStoreManager = TokenExchangeUtils.getUserStoreManager(tokReqMsgCtx);
+        for (UserOperationEventListener listener : TokenExchangeServiceComponent.getUserOperationEventListeners()) {
+            try {
+                listener.doPostAuthenticate(tokReqMsgCtx.getAuthorizedUser().getUserName(), false,
+                        userStoreManager);
+            } catch (UserStoreException e) {
+                if (e.getCause() instanceof IdentityEventException) {
+                    handleException(OAuth2ErrorCodes.ACCESS_DENIED, "Local user authorization failed: " +
+                            e.getCause().getLocalizedMessage());
+                }
+                handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
             }
-
-            if (isAccountDisabled) {
-                throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_REQUEST, "Local user account disabled");
-            }
-
-            UserRecoveryDataStore userRecoveryDataStore = JDBCRecoveryDataStore.getInstance();
-            SignedJWT signedJWT = getSignedJWT(requestParams.get(Constants.TokenExchangeConstants.SUBJECT_TOKEN));
-            JWTClaimsSet claimsSet = null;
-            if (signedJWT != null) {
-                claimsSet = getClaimSet(signedJWT);
-            }
-
-            User user = TokenExchangeUtils.getAssociatedLocalUser(tokReqMsgCtx, claimsSet);
-            UserRecoveryData recoveryData = userRecoveryDataStore.loadWithoutCodeExpiryValidation(
-                    new org.wso2.carbon.identity.application.common.model.User(user));
-
-            boolean isUserConfirmed = false;
-            if (recoveryData == null || !RecoveryScenarios.SELF_SIGN_UP.equals(recoveryData.getRecoveryScenario())) {
-                isUserConfirmed = true;
-            }
-
-            if (!isUserConfirmed) {
-                throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_REQUEST, "Local user account not confirmed");
-            }
-
-        } catch (UserStoreException e) {
-            throw new IdentityOAuth2Exception("Error while retrieving user claim value", e);
-        } catch (IdentityRecoveryException e) {
-            throw new IdentityOAuth2Exception("Error while retrieving user recovery data", e);
         }
     }
 
