@@ -877,18 +877,21 @@ public class TokenExchangeUtils {
             throws IdentityOAuth2Exception {
 
         for (String lookupAttribute : lookupAttributes) {
-            Object subjectIdentifierObj = claimsSet.getClaim(lookupAttribute);
-            if (subjectIdentifierObj instanceof String) {
-                return (String) subjectIdentifierObj;
-            }
-
+            // with the current implementation we will only support email as the lookup attribute.
+            // This will be improved in the immediate iteration.
             if (lookupAttribute.equals("email")) {
+                Object subjectIdentifierObj = claimsSet.getClaim(lookupAttribute);
+                if (subjectIdentifierObj instanceof String) {
+                    return (String) subjectIdentifierObj;
+                }
+
                 String regex = "^(.+)@(.+)$";
                 Pattern pattern = Pattern.compile(regex);
                 Matcher matcher = pattern.matcher(claimsSet.getSubject());
                 if (matcher.matches()) {
                     return claimsSet.getSubject();
                 }
+
             }
         }
 
