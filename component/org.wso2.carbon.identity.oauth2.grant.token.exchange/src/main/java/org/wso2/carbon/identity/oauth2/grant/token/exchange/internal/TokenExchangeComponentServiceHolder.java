@@ -27,7 +27,7 @@ import java.util.Map;
 
 public class TokenExchangeComponentServiceHolder {
 
-    private static TokenExchangeComponentServiceHolder instance = new TokenExchangeComponentServiceHolder();
+    private static final TokenExchangeComponentServiceHolder INSTANCE = new TokenExchangeComponentServiceHolder();
     private RealmService realmService;
     private ApplicationManagementService applicationManagementService;
     private Collection<UserOperationEventListener> userOperationEventListenerCollection;
@@ -35,7 +35,7 @@ public class TokenExchangeComponentServiceHolder {
     private FederatedAssociationManager federatedAssociationManager;
 
     public static TokenExchangeComponentServiceHolder getInstance() {
-        return instance;
+        return INSTANCE;
     }
 
     public RealmService getRealmService() {
