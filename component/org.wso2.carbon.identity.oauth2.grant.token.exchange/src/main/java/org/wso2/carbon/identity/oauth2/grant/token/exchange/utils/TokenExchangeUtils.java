@@ -359,7 +359,7 @@ public class TokenExchangeUtils {
                         federatedAssociationConfig.getLookupAttributes());
                 User localUser = getLocalUser(tokenReqMsgCtx, subjectIdentifier);
                 if (localUser != null) {
-                    if (!isUserAssociated(localUser, identityProvider)) {
+                    if (!isUserAssociated(localUser, identityProvider, subjectIdentifier)) {
                         createAssociation(localUser, identityProvider, subjectIdentifier);
                     }
                     authenticatedUser = new AuthenticatedUser(localUser);
@@ -433,7 +433,7 @@ public class TokenExchangeUtils {
         return serviceProvider;
     }
 
-    private static boolean isUserAssociated(User user, IdentityProvider idp) throws IdentityOAuth2Exception {
+    private static boolean isUserAssociated(User user, IdentityProvider idp, String subject) throws IdentityOAuth2Exception {
 
         FederatedAssociationManager federatedAssociationManager =
                 TokenExchangeComponentServiceHolder.getInstance().getFederatedAssociationManager();
@@ -442,7 +442,8 @@ public class TokenExchangeUtils {
                     new org.wso2.carbon.identity.application.common.model.User(user));
 
             for (FederatedAssociation association : associations) {
-                if (association.getIdp().getId().equals(idp.getResourceId())) {
+                if (association.getIdp().getId().equals(idp.getResourceId()) &&
+                        association.getFederatedUserId().equals(subject)) {
                     return true;
                 }
             }
