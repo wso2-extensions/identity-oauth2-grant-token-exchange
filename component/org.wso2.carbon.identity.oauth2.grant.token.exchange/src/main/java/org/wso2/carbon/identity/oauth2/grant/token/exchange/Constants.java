@@ -39,6 +39,8 @@ public class Constants {
     public static final String ERROR_GET_RESIDENT_IDP =
             "Error while getting Resident Identity Provider of '%s' tenant.";
 
+    public static final String OAUTH_APP_DO_PROPERTY = "OAuthAppDO";
+
     public static class TokenExchangeConstants {
 
         public static final String TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";

@@ -411,7 +411,7 @@ public class TokenExchangeUtils {
     private static ServiceProvider getServiceProvider(OAuthTokenReqMessageContext tokenReqMsgCtx) throws IdentityOAuth2Exception {
 
         ServiceProvider serviceProvider;
-        OAuthAppDO oAuthAppBean = (OAuthAppDO) tokenReqMsgCtx.getProperty("OAuthAppDO");
+        OAuthAppDO oAuthAppBean = (OAuthAppDO) tokenReqMsgCtx.getProperty(Constants.OAUTH_APP_DO_PROPERTY);
         String tenantDomain = tokenReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
         if (StringUtils.isEmpty(tenantDomain)) {
             tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
@@ -422,7 +422,7 @@ public class TokenExchangeUtils {
                     .getApplicationManagementService();
             serviceProvider = appMgtService.getServiceProvider(oAuthAppBean.getApplicationName(), tenantDomain);
         } catch (IdentityApplicationManagementException e) {
-            throw new IdentityOAuth2Exception(e.getMessage(), e);
+            throw new IdentityOAuth2Exception("Error while retrieving service provider configurations", e);
         }
 
         if (serviceProvider == null) {
@@ -867,7 +867,7 @@ public class TokenExchangeUtils {
                  localUser = userStoreManager.getUser(null, subjectIdentifier);
              }
         } catch (UserStoreException e) {
-            handleException("Error while resolving local user for subject: " + subjectIdentifier);
+            handleException("Error while resolving local user for subject: " + subjectIdentifier, e);
         }
         return localUser;
     }
@@ -875,27 +875,23 @@ public class TokenExchangeUtils {
     private static String resolveSubjectIdentifier(JWTClaimsSet claimsSet, String[] lookupAttributes)
             throws IdentityOAuth2Exception {
 
-        String subjectIdentifier = null;
         for (String lookupAttribute : lookupAttributes) {
             Object subjectIdentifierObj = claimsSet.getClaim(lookupAttribute);
             if (subjectIdentifierObj instanceof String) {
-                subjectIdentifier = (String) subjectIdentifierObj;
+                return (String) subjectIdentifierObj;
             }
 
-            if (lookupAttribute.equals("email") && StringUtils.isBlank(subjectIdentifier)) {
+            if (lookupAttribute.equals("email")) {
                 String regex = "^(.+)@(.+)$";
                 Pattern pattern = Pattern.compile(regex);
                 Matcher matcher = pattern.matcher(claimsSet.getSubject());
                 if (matcher.matches()) {
-                    subjectIdentifier = claimsSet.getSubject();
+                    return claimsSet.getSubject();
                 }
             }
         }
 
-        if (StringUtils.isBlank(subjectIdentifier)) {
-            throw new IdentityOAuth2Exception("Required claim not found in the token");
-        }
-        return subjectIdentifier;
+        throw new IdentityOAuth2Exception("Required claim not found in the token");
     }
 
     public static AbstractUserStoreManager getUserStoreManager(OAuthTokenReqMessageContext tokReqMsgCtx)
@@ -919,7 +915,7 @@ public class TokenExchangeUtils {
                 userStoreManager = (AbstractUserStoreManager) realm.getUserStoreManager();
             }
         } catch (UserStoreException e) {
-            handleException("Error while getting user store manager: " + e.getMessage());
+            handleException("Error while getting user store manager: " + e.getMessage(), e);
         }
         return userStoreManager;
     }
