@@ -37,27 +37,45 @@ import org.wso2.carbon.identity.application.authentication.framework.util.Framew
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkUtils;
 import org.wso2.carbon.identity.application.common.IdentityApplicationManagementException;
 import org.wso2.carbon.identity.application.common.model.Claim;
+import org.wso2.carbon.identity.application.common.model.ClaimConfig;
 import org.wso2.carbon.identity.application.common.model.ClaimMapping;
+import org.wso2.carbon.identity.application.common.model.FederatedAssociationConfig;
 import org.wso2.carbon.identity.application.common.model.FederatedAuthenticatorConfig;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.application.common.model.IdentityProviderProperty;
 import org.wso2.carbon.identity.application.common.model.Property;
+import org.wso2.carbon.identity.application.common.model.ServiceProvider;
 import org.wso2.carbon.identity.application.common.util.IdentityApplicationConstants;
 import org.wso2.carbon.identity.application.common.util.IdentityApplicationManagementUtil;
+import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.base.IdentityException;
 import org.wso2.carbon.identity.core.util.IdentityConfigParser;
 import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
+import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
+import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
+import org.wso2.carbon.identity.oauth2.IdentityOAuth2ServerException;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants;
+import org.wso2.carbon.identity.oauth2.grant.token.exchange.internal.TokenExchangeComponentServiceHolder;
 import org.wso2.carbon.identity.oauth2.model.AccessTokenDO;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.util.ClaimsUtil;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.identity.oauth2.validators.jwt.JWKSBasedJWTValidator;
+import org.wso2.carbon.identity.user.profile.mgt.association.federation.FederatedAssociationManager;
+import org.wso2.carbon.identity.user.profile.mgt.association.federation.exception.FederatedAssociationManagerException;
+import org.wso2.carbon.identity.user.profile.mgt.association.federation.model.FederatedAssociation;
 import org.wso2.carbon.idp.mgt.IdentityProviderManagementException;
 import org.wso2.carbon.idp.mgt.IdentityProviderManager;
+import org.wso2.carbon.user.api.UserStoreException;
+import org.wso2.carbon.user.core.UserCoreConstants;
+import org.wso2.carbon.user.core.UserRealm;
+import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
+import org.wso2.carbon.user.core.common.User;
+import org.wso2.carbon.user.core.service.RealmService;
+import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
 import java.security.PublicKey;
 import java.security.cert.CertificateException;
@@ -72,6 +90,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.xml.namespace.QName;
 
@@ -324,14 +344,41 @@ public class TokenExchangeUtils {
                                          IdentityProvider identityProvider, String authenticatedSubjectIdentifier,
                                          JWTClaimsSet claimsSet) throws IdentityOAuth2Exception {
 
-        AuthenticatedUser authenticatedUser;
-        if (Boolean.parseBoolean(IdentityUtil.getProperty(Constants.OAUTH_SPLIT_AUTHZ_USER_3_WAY))) {
-            authenticatedUser = OAuth2Util.getUserFromUserName(authenticatedSubjectIdentifier);
-            authenticatedUser.setAuthenticatedSubjectIdentifier(authenticatedSubjectIdentifier);
-        } else {
-            authenticatedUser =
-                    AuthenticatedUser.createFederateAuthenticatedUserFromSubjectIdentifier(authenticatedSubjectIdentifier);
-            authenticatedUser.setUserName(authenticatedSubjectIdentifier);
+        AuthenticatedUser authenticatedUser = null;
+
+        FederatedAssociationConfig federatedAssociationConfig = identityProvider.getFederatedAssociationConfig();
+        ClaimConfig claimConfig = identityProvider.getClaimConfig();
+
+        ServiceProvider serviceProvider = getServiceProvider(tokenReqMsgCtx);
+        if (serviceProvider.getClaimConfig() != null &&
+                serviceProvider.getClaimConfig().isAlwaysSendMappedLocalSubjectId() &&
+                !Constants.LOCAL_IDP_NAME.equals(identityProvider.getIdentityProviderName())) {
+
+            if (federatedAssociationConfig.isEnabled()) {
+                String subjectIdentifier = resolveSubjectIdentifier(claimsSet,
+                        federatedAssociationConfig.getLookupAttributes());
+                User localUser = getLocalUser(tokenReqMsgCtx, subjectIdentifier);
+                if (localUser != null) {
+                    if (!isUserAssociated(localUser, identityProvider, subjectIdentifier)) {
+                        createAssociation(localUser, identityProvider, subjectIdentifier);
+                    }
+                    authenticatedUser = new AuthenticatedUser(localUser);
+                }
+            }
+        }
+
+        if (authenticatedUser == null) {
+            if (Boolean.parseBoolean(IdentityUtil.getProperty(Constants.OAUTH_SPLIT_AUTHZ_USER_3_WAY))) {
+                authenticatedUser = OAuth2Util.getUserFromUserName(authenticatedSubjectIdentifier);
+                authenticatedUser.setAuthenticatedSubjectIdentifier(authenticatedSubjectIdentifier);
+            } else {
+                authenticatedUser =
+                        AuthenticatedUser.createFederateAuthenticatedUserFromSubjectIdentifier(
+                                authenticatedSubjectIdentifier);
+                authenticatedUser.setUserName(authenticatedSubjectIdentifier);
+            }
+            authenticatedUser.setFederatedUser(true);
+            authenticatedUser.setFederatedIdPName(identityProvider.getIdentityProviderName());
         }
 
         // If the IdP is the resident idp, fetch the access token data object for further processing.
@@ -349,16 +396,77 @@ public class TokenExchangeUtils {
             } else {
                 try {
                     authenticatedUser.setUserId(accessTokenDO.getAuthzUser().getUserId());
+                    authenticatedUser.setFederatedIdPName(null);
                 } catch (UserIdNotFoundException e) {
                     handleException("Error while getting user id from the access token data object.", e);
                 }
             }
-        } else {
-            authenticatedUser.setFederatedUser(true);
-            authenticatedUser.setFederatedIdPName(identityProvider.getIdentityProviderName());
         }
+
+
         tokenReqMsgCtx.setAuthorizedUser(authenticatedUser);
         populateIdPGroupsAttribute(tokenReqMsgCtx, identityProvider, claimsSet);
+    }
+
+    private static ServiceProvider getServiceProvider(OAuthTokenReqMessageContext tokenReqMsgCtx) throws IdentityOAuth2Exception {
+
+        ServiceProvider serviceProvider;
+        OAuthAppDO oAuthAppBean = (OAuthAppDO) tokenReqMsgCtx.getProperty(Constants.OAUTH_APP_DO_PROPERTY);
+        String tenantDomain = tokenReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
+        if (StringUtils.isEmpty(tenantDomain)) {
+            tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
+        }
+
+        try {
+            ApplicationManagementService appMgtService = TokenExchangeComponentServiceHolder.getInstance()
+                    .getApplicationManagementService();
+            serviceProvider = appMgtService.getServiceProvider(oAuthAppBean.getApplicationName(), tenantDomain);
+        } catch (IdentityApplicationManagementException e) {
+            throw new IdentityOAuth2Exception("Error while retrieving service provider configurations", e);
+        }
+
+        if (serviceProvider == null) {
+            throw new IdentityOAuth2Exception("Error while retrieving service provider for application name: " +
+                    oAuthAppBean.getApplicationName());
+        }
+
+        return serviceProvider;
+    }
+
+    private static boolean isUserAssociated(User user, IdentityProvider idp, String subject) throws IdentityOAuth2Exception {
+
+        FederatedAssociationManager federatedAssociationManager =
+                TokenExchangeComponentServiceHolder.getInstance().getFederatedAssociationManager();
+        try {
+            FederatedAssociation[] associations = federatedAssociationManager.getFederatedAssociationsOfUser(
+                    new org.wso2.carbon.identity.application.common.model.User(user));
+
+            for (FederatedAssociation association : associations) {
+                if (association.getIdp().getId().equals(idp.getResourceId()) &&
+                        association.getFederatedUserId().equals(subject)) {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (FederatedAssociationManagerException e) {
+            throw new IdentityOAuth2Exception("Error while retrieving federated associations of user: " +
+                    user.getUsername(), e);
+        }
+    }
+
+    private static void createAssociation(User user, IdentityProvider idp, String subject) throws IdentityOAuth2Exception {
+
+        FederatedAssociationManager federatedAssociationManager =
+                TokenExchangeComponentServiceHolder.getInstance().getFederatedAssociationManager();
+
+        try {
+            federatedAssociationManager.createFederatedAssociationWithIdpResourceId(
+                    new org.wso2.carbon.identity.application.common.model.User(user), idp.getResourceId(), subject);
+        } catch (FederatedAssociationManagerException e) {
+            throw new IdentityOAuth2ServerException("Error while creating federated association for user: " +
+                    user.getUsername(), e);
+        }
     }
 
     private static void populateIdPGroupsAttribute(OAuthTokenReqMessageContext tokReqMsgCtx,
@@ -748,5 +856,71 @@ public class TokenExchangeUtils {
         }
         // At this point 'verifier' will never be null;
         return signedJWT.verify(verifier);
+    }
+
+    public static User getLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx,
+                                    String subjectIdentifier) throws IdentityOAuth2Exception {
+
+        User localUser = null;
+        AbstractUserStoreManager userStoreManager = getUserStoreManager(tokReqMsgCtx);
+        try {
+             if(userStoreManager.isExistingUser(subjectIdentifier)) {
+                 localUser = userStoreManager.getUser(null, subjectIdentifier);
+             }
+        } catch (UserStoreException e) {
+            handleException("Error while resolving local user for subject: " + subjectIdentifier, e);
+        }
+        return localUser;
+    }
+
+    private static String resolveSubjectIdentifier(JWTClaimsSet claimsSet, String[] lookupAttributes)
+            throws IdentityOAuth2Exception {
+
+        for (String lookupAttribute : lookupAttributes) {
+            // with the current implementation we will only support email as the lookup attribute.
+            // This will be improved in the immediate iteration.
+            if (lookupAttribute.equals("email")) {
+                Object subjectIdentifierObj = claimsSet.getClaim(lookupAttribute);
+                if (subjectIdentifierObj instanceof String) {
+                    return (String) subjectIdentifierObj;
+                }
+
+                String regex = "^(.+)@(.+)$";
+                Pattern pattern = Pattern.compile(regex);
+                Matcher matcher = pattern.matcher(claimsSet.getSubject());
+                if (matcher.matches()) {
+                    return claimsSet.getSubject();
+                }
+
+            }
+        }
+
+        throw new IdentityOAuth2Exception("Required claim not found in the token");
+    }
+
+    public static AbstractUserStoreManager getUserStoreManager(OAuthTokenReqMessageContext tokReqMsgCtx)
+            throws IdentityOAuth2Exception {
+
+        RealmService realmService = TokenExchangeComponentServiceHolder.getInstance().getRealmService();
+        String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
+        AbstractUserStoreManager userStoreManager = null;
+
+        if (StringUtils.isEmpty(tenantDomain)) {
+            tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
+        }
+        int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
+
+        try {
+            UserRealm realm = (UserRealm) realmService.getTenantUserRealm(tenantId);
+
+            if (realm.getUserStoreManager().getSecondaryUserStoreManager() != null) {
+                userStoreManager = (AbstractUserStoreManager) realm.getUserStoreManager().getSecondaryUserStoreManager();
+            } else {
+                userStoreManager = (AbstractUserStoreManager) realm.getUserStoreManager();
+            }
+        } catch (UserStoreException e) {
+            handleException("Error while getting user store manager: " + e.getMessage(), e);
+        }
+        return userStoreManager;
     }
 }
