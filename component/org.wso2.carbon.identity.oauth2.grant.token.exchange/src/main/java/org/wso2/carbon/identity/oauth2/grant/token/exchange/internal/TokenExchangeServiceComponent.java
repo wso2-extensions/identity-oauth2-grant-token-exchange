@@ -106,7 +106,6 @@ public class TokenExchangeServiceComponent {
             policy = ReferencePolicy.DYNAMIC,
             unbind = "unsetUserOperationEventListenerService")
     protected void setUserOperationEventListenerService(UserOperationEventListener userOperationEventListenerService) {
-        TokenExchangeComponentServiceHolder.getInstance().setUserOperationEventListenerCollection(null);
         if (TokenExchangeComponentServiceHolder.getInstance().getUserOperationEventListeners() == null) {
             TokenExchangeComponentServiceHolder.getInstance().setUserOperationEventListeners(
                     new TreeMap<Integer, UserOperationEventListener>());
@@ -122,7 +121,6 @@ public class TokenExchangeServiceComponent {
                 TokenExchangeComponentServiceHolder.getInstance().getUserOperationEventListeners() != null) {
             TokenExchangeComponentServiceHolder.getInstance().removeUserOperationEventListener(
                     userOperationEventListenerService.getExecutionOrderId());
-            TokenExchangeComponentServiceHolder.getInstance().setUserOperationEventListenerCollection(null);
         }
     }
 
@@ -153,20 +151,13 @@ public class TokenExchangeServiceComponent {
     public static Collection<UserOperationEventListener> getUserOperationEventListeners() {
         Map<Integer, UserOperationEventListener> userOperationEventListeners =
                 TokenExchangeComponentServiceHolder.getInstance().getUserOperationEventListeners();
-        Collection<UserOperationEventListener> userOperationEventListenerCollection =
-                TokenExchangeComponentServiceHolder.getInstance().getUserOperationEventListenerCollection();
+
         if (userOperationEventListeners == null) {
             userOperationEventListeners = new TreeMap<>();
             TokenExchangeComponentServiceHolder.getInstance().setUserOperationEventListeners(
                     userOperationEventListeners);
         }
 
-        if (userOperationEventListenerCollection == null) {
-            userOperationEventListenerCollection = userOperationEventListeners.values();
-            TokenExchangeComponentServiceHolder.getInstance().setUserOperationEventListenerCollection(
-                    userOperationEventListenerCollection);
-        }
-
-        return userOperationEventListenerCollection;
+        return userOperationEventListeners.values();
     }
 }
