@@ -70,7 +70,6 @@ import org.wso2.carbon.identity.user.profile.mgt.association.federation.model.Fe
 import org.wso2.carbon.idp.mgt.IdentityProviderManagementException;
 import org.wso2.carbon.idp.mgt.IdentityProviderManager;
 import org.wso2.carbon.user.api.UserStoreException;
-import org.wso2.carbon.user.core.UserCoreConstants;
 import org.wso2.carbon.user.core.UserRealm;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.user.core.common.User;
@@ -89,9 +88,8 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import javax.xml.namespace.QName;
 
@@ -347,21 +345,20 @@ public class TokenExchangeUtils {
         AuthenticatedUser authenticatedUser = null;
 
         FederatedAssociationConfig federatedAssociationConfig = identityProvider.getFederatedAssociationConfig();
-        ClaimConfig claimConfig = identityProvider.getClaimConfig();
 
         ServiceProvider serviceProvider = getServiceProvider(tokenReqMsgCtx);
         if (serviceProvider.getClaimConfig() != null &&
                 serviceProvider.getClaimConfig().isAlwaysSendMappedLocalSubjectId() &&
                 !Constants.LOCAL_IDP_NAME.equals(identityProvider.getIdentityProviderName())) {
 
-            if (federatedAssociationConfig.isEnabled()) {
-                String subjectIdentifier = resolveSubjectIdentifier(claimsSet,
-                        federatedAssociationConfig.getLookupAttributes());
-                User localUser = getLocalUser(tokenReqMsgCtx, subjectIdentifier);
-                if (localUser != null) {
-                    if (!isUserAssociated(localUser, identityProvider, subjectIdentifier)) {
-                        createAssociation(localUser, identityProvider, subjectIdentifier);
-                    }
+            Map<String, String> mappedLocalClaims = resolveMappedLocalClaims(claimsSet,
+                        federatedAssociationConfig.getLookupAttributes(), identityProvider);
+            User localUser = getLocalUser(tokenReqMsgCtx, mappedLocalClaims);
+            if (localUser != null) {
+                if (isUserAssociated(localUser, identityProvider, authenticatedSubjectIdentifier)) {
+                    authenticatedUser = new AuthenticatedUser(localUser);
+                } else if (federatedAssociationConfig.isEnabled()) {
+                    createAssociation(localUser, identityProvider, authenticatedSubjectIdentifier);
                     authenticatedUser = new AuthenticatedUser(localUser);
                 }
             }
@@ -859,43 +856,58 @@ public class TokenExchangeUtils {
     }
 
     public static User getLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx,
-                                    String subjectIdentifier) throws IdentityOAuth2Exception {
+                                    Map<String, String> claims) throws IdentityOAuth2Exception {
 
-        User localUser = null;
+        String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
         AbstractUserStoreManager userStoreManager = getUserStoreManager(tokReqMsgCtx);
+        User user = null;
+
         try {
-             if(userStoreManager.isExistingUser(subjectIdentifier)) {
-                 localUser = userStoreManager.getUser(null, subjectIdentifier);
-             }
+            for (Map.Entry<String, String > claim : claims.entrySet()) {
+                List<User> users = userStoreManager.getUserListWithID(claim.getKey(), claim.getValue(), null);
+                    if (users.size() == 1) {
+                        user = users.get(0);
+                        break;
+                    }
+            }
         } catch (UserStoreException e) {
-            handleException("Error while resolving local user for subject: " + subjectIdentifier, e);
+            handleException("Error while retrieving local user for tenant: " + tenantDomain, e);
         }
-        return localUser;
+
+        return user;
     }
 
-    private static String resolveSubjectIdentifier(JWTClaimsSet claimsSet, String[] lookupAttributes)
+    private static Map<String, String> resolveMappedLocalClaims(JWTClaimsSet claimsSet,
+                                                                String[] lookupAttributes,
+                                                                IdentityProvider idp)
             throws IdentityOAuth2Exception {
 
+        ClaimConfig idpClaimConfig = idp.getClaimConfig();
+        ClaimMapping[] claimMappings = idpClaimConfig.getClaimMappings();
+        if (ArrayUtils.isEmpty(claimMappings)) {
+            throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_CLIENT,
+                    "No claim mappings found for the identity provider: " + idp.getIdentityProviderName());
+        }
+
+        Map<String, String> localClaims = new HashMap<>();
         for (String lookupAttribute : lookupAttributes) {
-            // with the current implementation we will only support email as the lookup attribute.
-            // This will be improved in the immediate iteration.
-            if (lookupAttribute.equals("email")) {
-                Object subjectIdentifierObj = claimsSet.getClaim(lookupAttribute);
-                if (subjectIdentifierObj instanceof String) {
-                    return (String) subjectIdentifierObj;
+            for (ClaimMapping claimMapping: claimMappings) {
+                if (claimMapping.getLocalClaim().getClaimUri().equals(lookupAttribute)) {
+                    String mappedIdpClaim = claimMapping.getRemoteClaim().getClaimUri();
+                    if (claimsSet.getClaim(mappedIdpClaim) != null) {
+                        localClaims.put(claimMapping.getLocalClaim().getClaimUri(),
+                                claimsSet.getClaim(mappedIdpClaim).toString());
+                    }
                 }
-
-                String regex = "^(.+)@(.+)$";
-                Pattern pattern = Pattern.compile(regex);
-                Matcher matcher = pattern.matcher(claimsSet.getSubject());
-                if (matcher.matches()) {
-                    return claimsSet.getSubject();
-                }
-
             }
         }
 
-        throw new IdentityOAuth2Exception("Required claim not found in the token");
+        if (MapUtils.isEmpty(localClaims)) {
+            throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_CLIENT,
+                    "No mapped local claims found for the identity provider: " + idp.getIdentityProviderName());
+        }
+
+        return localClaims;
     }
 
     public static AbstractUserStoreManager getUserStoreManager(OAuthTokenReqMessageContext tokReqMsgCtx)
