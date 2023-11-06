@@ -18,6 +18,7 @@
 package org.wso2.carbon.identity.oauth2.grant.token.exchange.internal;
 
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
+import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.FederatedAssociationManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
 import org.wso2.carbon.user.core.service.RealmService;
@@ -31,6 +32,8 @@ public class TokenExchangeComponentServiceHolder {
     private ApplicationManagementService applicationManagementService;
     private Map<Integer, UserOperationEventListener> userOperationEventListeners;
     private FederatedAssociationManager federatedAssociationManager;
+
+    private ClaimMetadataManagementService claimMetadataManagementService;
 
     public static TokenExchangeComponentServiceHolder getInstance() {
         return INSTANCE;
@@ -85,6 +88,16 @@ public class TokenExchangeComponentServiceHolder {
     public void setFederatedAssociationManager(FederatedAssociationManager federatedAssociationManager) {
 
         this.federatedAssociationManager = federatedAssociationManager;
+    }
+
+    public ClaimMetadataManagementService getClaimMetadataManagementService() {
+
+        return claimMetadataManagementService;
+    }
+
+    public void setClaimMetadataManagementService(ClaimMetadataManagementService claimMetadataManagementService) {
+
+        this.claimMetadataManagementService = claimMetadataManagementService;
     }
 
 

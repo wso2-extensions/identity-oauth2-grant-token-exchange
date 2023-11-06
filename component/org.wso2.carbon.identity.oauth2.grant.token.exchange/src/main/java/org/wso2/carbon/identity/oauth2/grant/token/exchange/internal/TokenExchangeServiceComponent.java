@@ -26,6 +26,7 @@ import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.component.annotations.ReferencePolicy;
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
+import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.FederatedAssociationManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
 import org.wso2.carbon.user.core.service.RealmService;
@@ -146,6 +147,22 @@ public class TokenExchangeServiceComponent {
                     "bundle");
         }
         TokenExchangeComponentServiceHolder.getInstance().setFederatedAssociationManager(null);
+    }
+
+    @Reference(
+            name = "claimManagementService",
+            service = ClaimMetadataManagementService.class,
+            cardinality = ReferenceCardinality.MANDATORY,
+            policy = ReferencePolicy.DYNAMIC,
+            unbind = "unsetClaimMetadataManagementService")
+    protected void setClaimMetadataManagementService(ClaimMetadataManagementService claimManagementService) {
+
+        TokenExchangeComponentServiceHolder.getInstance().setClaimMetadataManagementService(claimManagementService);
+    }
+
+    protected void unsetClaimMetadataManagementService(ClaimMetadataManagementService claimManagementService) {
+
+        TokenExchangeComponentServiceHolder.getInstance().setClaimMetadataManagementService(null);
     }
 
     public static Collection<UserOperationEventListener> getUserOperationEventListeners() {

@@ -49,6 +49,9 @@ import org.wso2.carbon.identity.application.common.util.IdentityApplicationConst
 import org.wso2.carbon.identity.application.common.util.IdentityApplicationManagementUtil;
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.base.IdentityException;
+import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
+import org.wso2.carbon.identity.claim.metadata.mgt.exception.ClaimMetadataException;
+import org.wso2.carbon.identity.claim.metadata.mgt.model.ExternalClaim;
 import org.wso2.carbon.identity.core.util.IdentityConfigParser;
 import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
@@ -58,6 +61,7 @@ import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ServerException;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants;
+import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.SendLocalUser;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.internal.TokenExchangeComponentServiceHolder;
 import org.wso2.carbon.identity.oauth2.model.AccessTokenDO;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
@@ -345,22 +349,40 @@ public class TokenExchangeUtils {
         AuthenticatedUser authenticatedUser = null;
 
         FederatedAssociationConfig federatedAssociationConfig = identityProvider.getFederatedAssociationConfig();
-
         ServiceProvider serviceProvider = getServiceProvider(tokenReqMsgCtx);
-        if (serviceProvider.getClaimConfig() != null &&
-                serviceProvider.getClaimConfig().isAlwaysSendMappedLocalSubjectId() &&
-                !Constants.LOCAL_IDP_NAME.equals(identityProvider.getIdentityProviderName())) {
+        ClaimConfig serviceProviderClaimConfig = serviceProvider.getClaimConfig();
+        if (!Constants.LOCAL_IDP_NAME.equals(identityProvider.getIdentityProviderName())) {
+            SendLocalUser sendLocalUser = getSendLocalUser(serviceProviderClaimConfig);
+            User localUser = null;
+            if (federatedAssociationConfig != null && federatedAssociationConfig.isEnabled()) {
+                Map<String, String> mappedLocalClaims = resolveMappedLocalClaims(claimsSet,
+                        federatedAssociationConfig.getLookupAttributes(),
+                        identityProvider,
+                        tokenReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain());
 
-            Map<String, String> mappedLocalClaims = resolveMappedLocalClaims(claimsSet,
-                        federatedAssociationConfig.getLookupAttributes(), identityProvider);
-            User localUser = getLocalUser(tokenReqMsgCtx, mappedLocalClaims);
-            if (localUser != null) {
-                if (isUserAssociated(localUser, identityProvider, authenticatedSubjectIdentifier)) {
-                    authenticatedUser = new AuthenticatedUser(localUser);
-                } else if (federatedAssociationConfig.isEnabled()) {
+                localUser = getLocalUser(tokenReqMsgCtx, mappedLocalClaims);
+                if (localUser != null &&
+                        !isUserAssociated(localUser, identityProvider, authenticatedSubjectIdentifier)) {
                     createAssociation(localUser, identityProvider, authenticatedSubjectIdentifier);
-                    authenticatedUser = new AuthenticatedUser(localUser);
                 }
+            }
+
+            switch (sendLocalUser) {
+                case OPTIONAL:
+                    if (localUser != null) {
+                        authenticatedUser = new AuthenticatedUser(localUser);
+                    }
+                    break;
+                case MANDATORY:
+                    if (localUser != null) {
+                        authenticatedUser = new AuthenticatedUser(localUser);
+                    } else {
+                        throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_CLIENT,
+                                "Use mapped local subject is mandatory but a local user couldn't be found");
+                    }
+                    break;
+                default:
+                    break;
             }
         }
 
@@ -405,6 +427,12 @@ public class TokenExchangeUtils {
         populateIdPGroupsAttribute(tokenReqMsgCtx, identityProvider, claimsSet);
     }
 
+    /**
+     * Method to get the service provider based on the provided token request message context.
+     * @param tokenReqMsgCtx  Token request message context.
+     * @return  Service provider.
+     * @throws IdentityOAuth2Exception  Identity OAuth2 Exception.
+     */
     private static ServiceProvider getServiceProvider(OAuthTokenReqMessageContext tokenReqMsgCtx) throws IdentityOAuth2Exception {
 
         ServiceProvider serviceProvider;
@@ -430,6 +458,14 @@ public class TokenExchangeUtils {
         return serviceProvider;
     }
 
+    /**
+     * Method to check if the provided user account has an association with the provided identity provider.
+     * @param user  Local user
+     * @param idp  Identity provider
+     * @param subject  Subject identifier
+     * @return  true if the user is associated with the identity provider, false otherwise
+     * @throws IdentityOAuth2Exception  Identity OAuth2 Exception.
+     */
     private static boolean isUserAssociated(User user, IdentityProvider idp, String subject) throws IdentityOAuth2Exception {
 
         FederatedAssociationManager federatedAssociationManager =
@@ -452,6 +488,13 @@ public class TokenExchangeUtils {
         }
     }
 
+    /**
+     * Method to create an association between the provider local user and the identity provider
+     * @param user    Local user
+     * @param idp   Identity provider
+     * @param subject  Subject identifier
+     * @throws IdentityOAuth2Exception  Identity OAuth2 Exception.
+     */
     private static void createAssociation(User user, IdentityProvider idp, String subject) throws IdentityOAuth2Exception {
 
         FederatedAssociationManager federatedAssociationManager =
@@ -855,6 +898,13 @@ public class TokenExchangeUtils {
         return signedJWT.verify(verifier);
     }
 
+    /**
+     * Method to resolve and return the matching local user account based on the provided claims.
+     * @param tokReqMsgCtx  OauthTokenReqMessageContext
+     * @param claims  Lookup claims
+     * @return  Matching local user account
+     * @throws IdentityOAuth2Exception  Error when resolving local user account
+     */
     public static User getLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx,
                                     Map<String, String> claims) throws IdentityOAuth2Exception {
 
@@ -877,39 +927,72 @@ public class TokenExchangeUtils {
         return user;
     }
 
+    /**
+     * Method to resolve the mapped local claims based on the idp claim mappings and the oidc claim dialect.
+     * @param claimsSet  JWT Claims Set from the subject token
+     * @param lookupAttributes  Lookup attributes configured in the identity provider
+     * @param idp  Identity Provider
+     * @param tenantDomain  Tenant Domain
+     * @return  Map of mapped local claims
+     * @throws IdentityOAuth2Exception  Error when resolving mapped local claims
+     */
     private static Map<String, String> resolveMappedLocalClaims(JWTClaimsSet claimsSet,
                                                                 String[] lookupAttributes,
-                                                                IdentityProvider idp)
+                                                                IdentityProvider idp,
+                                                                String tenantDomain)
             throws IdentityOAuth2Exception {
 
+        Map<String, String> localClaims = new HashMap<>();
         ClaimConfig idpClaimConfig = idp.getClaimConfig();
         ClaimMapping[] claimMappings = idpClaimConfig.getClaimMappings();
-        if (ArrayUtils.isEmpty(claimMappings)) {
-            throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_CLIENT,
-                    "No claim mappings found for the identity provider: " + idp.getIdentityProviderName());
-        }
-
-        Map<String, String> localClaims = new HashMap<>();
-        for (String lookupAttribute : lookupAttributes) {
-            for (ClaimMapping claimMapping: claimMappings) {
-                if (claimMapping.getLocalClaim().getClaimUri().equals(lookupAttribute)) {
-                    String mappedIdpClaim = claimMapping.getRemoteClaim().getClaimUri();
-                    if (claimsSet.getClaim(mappedIdpClaim) != null) {
-                        localClaims.put(claimMapping.getLocalClaim().getClaimUri(),
-                                claimsSet.getClaim(mappedIdpClaim).toString());
+        if (ArrayUtils.isNotEmpty(claimMappings)) {
+            for (String lookupAttribute : lookupAttributes) {
+                for (ClaimMapping claimMapping: claimMappings) {
+                    if (claimMapping.getLocalClaim().getClaimUri().equals(lookupAttribute)) {
+                        String mappedIdpClaim = claimMapping.getRemoteClaim().getClaimUri();
+                        if (claimsSet.getClaim(mappedIdpClaim) != null) {
+                            localClaims.put(claimMapping.getLocalClaim().getClaimUri(),
+                                    claimsSet.getClaim(mappedIdpClaim).toString());
+                        }
                     }
                 }
+            }
+        } else {
+            // if no explicit idp claim mappings are configured, resolve using oidc claim dialect
+            ClaimMetadataManagementService claimMetadataManagementService =
+                    TokenExchangeComponentServiceHolder.getInstance().getClaimMetadataManagementService();
+            try {
+                List<ExternalClaim> oidcClaims = claimMetadataManagementService.getExternalClaims(
+                        Constants.OIDC_DIALECT_URI, tenantDomain);
+                for (ExternalClaim oidcClaim: oidcClaims) {
+                    if (ArrayUtils.contains(lookupAttributes, oidcClaim.getMappedLocalClaim()) &&
+                            StringUtils.isNotBlank(claimsSet.getClaim(oidcClaim.getClaimURI()).toString()) &&
+                            !localClaims.containsKey(oidcClaim.getMappedLocalClaim())) {
+                        localClaims.put(oidcClaim.getMappedLocalClaim(),
+                                claimsSet.getClaim(oidcClaim.getClaimURI()).toString());
+
+                    }
+                }
+            } catch (ClaimMetadataException e) {
+                throw new IdentityOAuth2ServerException("Error while retrieving OIDC claims for tenant: " +
+                        tenantDomain, e);
             }
         }
 
         if (MapUtils.isEmpty(localClaims)) {
             throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_CLIENT,
-                    "No mapped local claims found for the identity provider: " + idp.getIdentityProviderName());
+                    "Configured lookup attributes not found in the subject token.");
         }
 
         return localClaims;
     }
 
+    /**
+     * Method to get the user store manager.
+     * @param tokReqMsgCtx  OauthTokenReqMessageContext
+     * @return User store manager.
+     * @throws IdentityOAuth2Exception  Error when getting user store manager.
+     */
     public static AbstractUserStoreManager getUserStoreManager(OAuthTokenReqMessageContext tokReqMsgCtx)
             throws IdentityOAuth2Exception {
 
@@ -934,5 +1017,24 @@ public class TokenExchangeUtils {
             handleException("Error while getting user store manager: " + e.getMessage(), e);
         }
         return userStoreManager;
+    }
+
+    /**
+     * Method to get the assert local user behaviour based on the service provider claim configuration.
+     * @param claimConfig  Claim configuration of the service provider.
+     * @return Assert local user behaviour.
+     */
+    private static SendLocalUser getSendLocalUser(ClaimConfig claimConfig) {
+        if (claimConfig == null) {
+            return SendLocalUser.DISABLED;
+        }
+
+        if (claimConfig.isMappedLocalSubjectMandatory()) {
+            return SendLocalUser.MANDATORY;
+        } else if (claimConfig.isAlwaysSendMappedLocalSubjectId()) {
+            return SendLocalUser.OPTIONAL;
+        } else {
+            return SendLocalUser.DISABLED;
+        }
     }
 }
