@@ -32,7 +32,6 @@ public class TokenExchangeComponentServiceHolder {
     private ApplicationManagementService applicationManagementService;
     private Map<Integer, UserOperationEventListener> userOperationEventListeners;
     private FederatedAssociationManager federatedAssociationManager;
-
     private ClaimMetadataManagementService claimMetadataManagementService;
 
     public static TokenExchangeComponentServiceHolder getInstance() {
@@ -99,6 +98,5 @@ public class TokenExchangeComponentServiceHolder {
 
         this.claimMetadataManagementService = claimMetadataManagementService;
     }
-
 
 }
