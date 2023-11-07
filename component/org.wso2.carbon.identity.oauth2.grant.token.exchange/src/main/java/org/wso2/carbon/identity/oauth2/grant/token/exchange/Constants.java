@@ -62,7 +62,7 @@ public class Constants {
         public static final String SUPPORTED_GRANT_TYPES = "SupportedGrantTypes";
     }
 
-    public enum SendLocalUser {
+    public enum UserLinkStrategy {
         DISABLED,
         OPTIONAL,
         MANDATORY
