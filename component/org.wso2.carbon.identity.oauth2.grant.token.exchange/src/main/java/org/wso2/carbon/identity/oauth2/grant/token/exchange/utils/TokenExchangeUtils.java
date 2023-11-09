@@ -94,6 +94,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import javax.xml.namespace.QName;
 
@@ -353,37 +354,39 @@ public class TokenExchangeUtils {
         ClaimConfig serviceProviderClaimConfig = serviceProvider.getClaimConfig();
         if (!Constants.LOCAL_IDP_NAME.equals(identityProvider.getIdentityProviderName())) {
             UserLinkStrategy localUserLinking = resolveLocalUserLinkingStrategy(serviceProviderClaimConfig);
-            User localUser = null;
+            Optional<User> localUser = Optional.empty();
             if (localUserLinking == UserLinkStrategy.OPTIONAL || localUserLinking == UserLinkStrategy.MANDATORY) {
                 // check if the federated user already has an associated local user.
                 // If so no need to perform claim based account lookup
                 localUser = getAlreadyAssociatedLocalUser(tokenReqMsgCtx, identityProvider,
                         authenticatedSubjectIdentifier);
             }
-            if (localUser == null && federatedAssociationConfig != null && federatedAssociationConfig.isEnabled()) {
+
+            if (!localUser.isPresent() && federatedAssociationConfig != null &&
+                    federatedAssociationConfig.isEnabled()) {
                 Map<String, String> mappedLocalClaims = resolveMappedLocalClaims(claimsSet,
                         federatedAssociationConfig.getLookupAttributes(),
                         identityProvider,
                         tokenReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain());
 
-                localUser = getLocalUser(tokenReqMsgCtx, mappedLocalClaims);
-                if (localUser != null &&
-                        !isUserAssociated(localUser, identityProvider, authenticatedSubjectIdentifier)) {
-                    createAssociation(localUser, identityProvider, authenticatedSubjectIdentifier);
+                localUser = Optional.ofNullable(getLocalUser(tokenReqMsgCtx, mappedLocalClaims));
+                if (localUser.isPresent() &&
+                        !isUserAssociated(localUser.get(), identityProvider, authenticatedSubjectIdentifier)) {
+                    createAssociation(localUser.get(), identityProvider, authenticatedSubjectIdentifier);
                 }
             }
 
             switch (localUserLinking) {
                 case OPTIONAL:
-                    if (localUser != null) {
-                        authenticatedUser = new AuthenticatedUser(localUser);
+                    if (localUser.isPresent()) {
+                        authenticatedUser = new AuthenticatedUser(localUser.get());
                     }
                     break;
                 case MANDATORY:
-                    if (localUser != null) {
-                        authenticatedUser = new AuthenticatedUser(localUser);
+                    if (localUser.isPresent()) {
+                        authenticatedUser = new AuthenticatedUser(localUser.get());
                     } else {
-                        throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_CLIENT,
+                        throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_REQUEST,
                                 "Use mapped local subject is mandatory but a local user couldn't be found");
                     }
                     break;
@@ -494,8 +497,9 @@ public class TokenExchangeUtils {
         }
     }
 
-    private static User getAlreadyAssociatedLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx, IdentityProvider idp,
-                                                      String subjectIdentifier) throws IdentityOAuth2Exception {
+    private static Optional<User> getAlreadyAssociatedLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx,
+                                                                IdentityProvider idp, String subjectIdentifier)
+            throws IdentityOAuth2Exception {
 
         String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
         FederatedAssociationManager federatedAssociationManager =
@@ -505,7 +509,7 @@ public class TokenExchangeUtils {
                     idp.getIdentityProviderName(), subjectIdentifier);
             if (StringUtils.isNotBlank(localUsername)) {
                 AbstractUserStoreManager userStoreManager = getUserStoreManager(tokReqMsgCtx);
-                return userStoreManager.getUser(null, localUsername);
+                return Optional.ofNullable(userStoreManager.getUser(null, localUsername));
             }
 
         } catch (FederatedAssociationManagerException e) {
@@ -515,7 +519,7 @@ public class TokenExchangeUtils {
             throw new IdentityOAuth2ServerException("Error while getting associated local user for subject: " +
                     subjectIdentifier, e);
         }
-        return null;
+        return Optional.empty();
     }
 
     /**
