@@ -34,7 +34,7 @@ public class Constants {
     static final String EXPIRY_TIME = "EXPIRY_TIME_JWT";
     public static final String DEFAULT_IDP_NAME = "default";
     public static final String OIDC_IDP_ENTITY_ID = "IdPEntityId";
-
+    public static final String OIDC_DIALECT_URI = "http://wso2.org/oidc/claim";
     public static final String LOCAL_IDP_NAME = "LOCAL";
     public static final String ERROR_GET_RESIDENT_IDP =
             "Error while getting Resident Identity Provider of '%s' tenant.";
@@ -60,5 +60,11 @@ public class Constants {
         public static final String GRANT_TYPE_NAME = "GrantTypeName";
         public static final String IAT_VALIDITY_PERIOD_IN_MIN = "IATValidityPeriod";
         public static final String SUPPORTED_GRANT_TYPES = "SupportedGrantTypes";
+    }
+
+    public enum UserLinkStrategy {
+        DISABLED,
+        OPTIONAL,
+        MANDATORY
     }
 }

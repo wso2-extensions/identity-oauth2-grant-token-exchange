@@ -18,11 +18,11 @@
 package org.wso2.carbon.identity.oauth2.grant.token.exchange.internal;
 
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
+import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.FederatedAssociationManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
 import org.wso2.carbon.user.core.service.RealmService;
 
-import java.util.Collection;
 import java.util.Map;
 
 public class TokenExchangeComponentServiceHolder {
@@ -30,9 +30,9 @@ public class TokenExchangeComponentServiceHolder {
     private static final TokenExchangeComponentServiceHolder INSTANCE = new TokenExchangeComponentServiceHolder();
     private RealmService realmService;
     private ApplicationManagementService applicationManagementService;
-    private Collection<UserOperationEventListener> userOperationEventListenerCollection;
     private Map<Integer, UserOperationEventListener> userOperationEventListeners;
     private FederatedAssociationManager federatedAssociationManager;
+    private ClaimMetadataManagementService claimMetadataManagementService;
 
     public static TokenExchangeComponentServiceHolder getInstance() {
         return INSTANCE;
@@ -56,17 +56,6 @@ public class TokenExchangeComponentServiceHolder {
     public void setApplicationManagementService(ApplicationManagementService applicationManagementService) {
 
         this.applicationManagementService = applicationManagementService;
-    }
-
-    public Collection<UserOperationEventListener> getUserOperationEventListenerCollection() {
-
-        return userOperationEventListenerCollection;
-    }
-
-    public void setUserOperationEventListenerCollection(Collection<UserOperationEventListener>
-                                                                userOperationEventListenerCollection) {
-
-        this.userOperationEventListenerCollection = userOperationEventListenerCollection;
     }
 
     public Map<Integer, UserOperationEventListener> getUserOperationEventListeners() {
@@ -100,5 +89,14 @@ public class TokenExchangeComponentServiceHolder {
         this.federatedAssociationManager = federatedAssociationManager;
     }
 
+    public ClaimMetadataManagementService getClaimMetadataManagementService() {
+
+        return claimMetadataManagementService;
+    }
+
+    public void setClaimMetadataManagementService(ClaimMetadataManagementService claimMetadataManagementService) {
+
+        this.claimMetadataManagementService = claimMetadataManagementService;
+    }
 
 }
