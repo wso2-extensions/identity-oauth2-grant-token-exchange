@@ -116,6 +116,10 @@
             <artifactId>org.wso2.carbon.identity.core</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.wso2.carbon.identity.event.handler.accountlock</groupId>
+            <artifactId>org.wso2.carbon.identity.handler.event.account.lock</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.apache.ws.commons.axiom.wso2</groupId>
             <artifactId>axiom</artifactId>
         </dependency>
@@ -160,6 +164,8 @@
                             org.wso2.carbon.user.core.*; version="${carbon.kernel.package.import.version.range}",
                             org.wso2.carbon.identity.application.authentication.framework.*;
                             version="${carbon.identity.package.import.version.range}",
+                            org.wso2.carbon.identity.handler.event.account.lock.exception;
+                            version="${carbon.identity.account.lock.handler.imp.pkg.version.range}",
                             org.wso2.carbon.identity.application.mgt;
                             version="${carbon.identity.package.import.version.range}",
                             org.wso2.carbon.identity.event;

@@ -29,6 +29,7 @@ import org.wso2.carbon.identity.application.authentication.framework.model.Authe
 import org.wso2.carbon.identity.application.common.model.ClaimMapping;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.event.IdentityEventException;
+import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLockException;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
@@ -140,10 +141,16 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 listener.doPostAuthenticate(tokReqMsgCtx.getAuthorizedUser().getUserName(), false,
                         userStoreManager);
             } catch (UserStoreException e) {
+                if (e.getCause() instanceof AccountLockException) {
+                    handleException(OAuth2ErrorCodes.ACCESS_DENIED, "Local user authorization failed: " +
+                            "linked local account is locked");
+                }
+
                 if (e.getCause() instanceof IdentityEventException) {
                     handleException(OAuth2ErrorCodes.ACCESS_DENIED, "Local user authorization failed: " +
-                            e.getCause().getLocalizedMessage());
+                            e.getLocalizedMessage());
                 }
+
                 handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
             }
         }

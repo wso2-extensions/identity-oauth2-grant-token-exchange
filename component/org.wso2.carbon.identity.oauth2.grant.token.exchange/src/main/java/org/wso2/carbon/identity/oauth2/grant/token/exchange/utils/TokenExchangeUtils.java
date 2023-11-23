@@ -714,7 +714,7 @@ public class TokenExchangeUtils {
                     + tenantDomain, e);
         }
         AuthenticatedUser user = tokReqMsgCtx.getAuthorizedUser();
-        if (MapUtils.isNotEmpty(mappedClaims)) {
+        if (MapUtils.isNotEmpty(mappedClaims) && user.isFederatedUser()) {
             user.setUserAttributes(FrameworkUtils.buildClaimMappings(mappedClaims));
         }
         tokReqMsgCtx.setAuthorizedUser(user);
