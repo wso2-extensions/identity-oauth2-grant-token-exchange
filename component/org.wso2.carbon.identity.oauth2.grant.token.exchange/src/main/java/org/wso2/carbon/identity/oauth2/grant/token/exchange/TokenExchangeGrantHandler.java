@@ -148,7 +148,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
                 if (e.getCause() instanceof IdentityEventException) {
                     handleException(OAuth2ErrorCodes.ACCESS_DENIED, "Local user authorization failed: " +
-                            e.getLocalizedMessage());
+                            e.getCause().getLocalizedMessage());
                 }
 
                 handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
