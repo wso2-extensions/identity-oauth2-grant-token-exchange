@@ -62,6 +62,16 @@ public class Constants {
         public static final String SUPPORTED_GRANT_TYPES = "SupportedGrantTypes";
     }
 
+    public static class LogConstants {
+        public static final String COMPONENT_ID = "oauth2-grant-token-exchange";
+
+        public static class ActionIDs {
+            public static final String AUTHORIZE_LINKED_LOCAL_USER = "authorize-linked-local-user";
+            public static final String GET_LOCAL_USER = "get-local-user";
+            public static final String CREATE_IMPLICIT_ACCOUNT_LINK = "create-implicit-account-link";
+        }
+    }
+
     public enum UserLinkStrategy {
         DISABLED,
         OPTIONAL,

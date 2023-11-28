@@ -75,6 +75,10 @@
             <artifactId>org.wso2.carbon.core</artifactId>
         </dependency>
         <dependency>
+            <artifactId>org.wso2.carbon.identity.central.log.mgt</artifactId>
+            <groupId>org.wso2.carbon.identity.framework</groupId>
+        </dependency>
+        <dependency>
             <groupId>org.json.wso2</groupId>
             <artifactId>json</artifactId>
         </dependency>
@@ -175,6 +179,8 @@
                             org.wso2.carbon.utils.*; version="${carbon.kernel.package.import.version.range}",
                             org.wso2.carbon.identity.recovery.*;
                             version="${identity.governance.imp.pkg.version.range}",
+                            org.wso2.carbon.identity.central.log.mgt.utils;
+                            version="${carbon.identity.package.import.version.range}",
                             com.nimbusds.jose.*; version="${nimbusds.osgi.version.range}",
                             com.nimbusds.jwt; version="${nimbusds.osgi.version.range}",
                             org.wso2.carbon.identity.application.common.*;

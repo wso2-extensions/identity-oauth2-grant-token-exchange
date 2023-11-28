@@ -25,9 +25,11 @@ import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.wso2.carbon.identity.application.authentication.framework.exception.UserIdNotFoundException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.common.model.ClaimMapping;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
+import org.wso2.carbon.identity.central.log.mgt.utils.LoggerUtils;
 import org.wso2.carbon.identity.event.IdentityEventException;
 import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLockException;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
@@ -44,6 +46,7 @@ import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.user.core.UserStoreException;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
+import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
 import java.util.Arrays;
@@ -135,6 +138,13 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private void validateLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx, Map<String, String> requestParams)
             throws IdentityOAuth2Exception {
 
+        String userId = null;
+        try {
+            userId = tokReqMsgCtx.getAuthorizedUser().getUserId();
+        } catch (UserIdNotFoundException e) {
+            handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
+        }
+
         AbstractUserStoreManager userStoreManager = TokenExchangeUtils.getUserStoreManager(tokReqMsgCtx);
         for (UserOperationEventListener listener : TokenExchangeServiceComponent.getUserOperationEventListeners()) {
             try {
@@ -142,8 +152,23 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                         userStoreManager);
             } catch (UserStoreException e) {
                 if (e.getCause() instanceof AccountLockException) {
-                    handleException(OAuth2ErrorCodes.ACCESS_DENIED, "Local user authorization failed: " +
-                            "linked local account is locked");
+                    String errorMessage = "Local user authorization failed: linked local account with id " + userId +
+                            " is locked";
+
+                    if (LoggerUtils.isDiagnosticLogsEnabled()) {
+                        DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder =
+                                new DiagnosticLog.DiagnosticLogBuilder(
+                                        Constants.LogConstants.COMPONENT_ID,
+                                        Constants.LogConstants.ActionIDs.AUTHORIZE_LINKED_LOCAL_USER
+                                );
+                        diagnosticLogBuilder
+                                .resultMessage(errorMessage)
+                                .logDetailLevel(DiagnosticLog.LogDetailLevel.APPLICATION)
+                                .resultStatus(DiagnosticLog.ResultStatus.FAILED);
+                        LoggerUtils.triggerDiagnosticLogEvent(diagnosticLogBuilder);
+                    }
+
+                    handleException(OAuth2ErrorCodes.ACCESS_DENIED, errorMessage);
                 }
 
                 if (e.getCause() instanceof IdentityEventException) {
