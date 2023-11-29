@@ -174,7 +174,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 if (e.getCause() instanceof IdentityEventException) {
                     String errorMessage = "Local user authorization failed for user: " + userId +
                             " cause: " + e.getCause().getLocalizedMessage();
-                    handleException(OAuth2ErrorCodes.ACCESS_DENIED, errorMessage);
 
                     if (LoggerUtils.isDiagnosticLogsEnabled()) {
                         DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder =
@@ -188,6 +187,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                                 .resultStatus(DiagnosticLog.ResultStatus.FAILED);
                         LoggerUtils.triggerDiagnosticLogEvent(diagnosticLogBuilder);
                     }
+
+                    handleException(OAuth2ErrorCodes.ACCESS_DENIED, errorMessage);
                 }
 
                 handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
