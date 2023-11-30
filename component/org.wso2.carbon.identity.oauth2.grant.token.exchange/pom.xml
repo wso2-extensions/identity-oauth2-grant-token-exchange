@@ -155,6 +155,8 @@
                             javax.servlet.http; version="${imp.pkg.version.javax.servlet}",
                             org.apache.oltu.oauth2.common.validators; version="${oltu.package.import.version.range}",
                             org.apache.oltu.oauth2.common; version="${oltu.package.import.version.range}",
+                            org.json;version="${wso2.json.version.range}",
+                            org.wso2.carbon; version="${carbon.kernel.package.import.version.range}",
                             !org.wso2.carbon.identity.oauth2.grant.token.exchange.*,
                             org.wso2.carbon.identity.oauth2.*;
                             version="${carbon.identity.oauth.package.import.version.range}",

@@ -31,6 +31,8 @@ import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.json.JSONObject;
+import org.wso2.carbon.CarbonConstants;
 import org.wso2.carbon.identity.application.authentication.framework.exception.UserIdNotFoundException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants;
@@ -80,8 +82,10 @@ import org.wso2.carbon.user.core.UserRealm;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.user.core.common.User;
 import org.wso2.carbon.user.core.service.RealmService;
+import org.wso2.carbon.user.core.util.UserCoreUtil;
 import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
+import static org.wso2.carbon.utils.CarbonUtils.isLegacyAuditLogsDisabled;
 
 import java.security.PublicKey;
 import java.security.cert.CertificateException;
@@ -375,7 +379,8 @@ public class TokenExchangeUtils {
                 localUser = Optional.ofNullable(getLocalUser(tokenReqMsgCtx, mappedLocalClaims));
                 if (localUser.isPresent() &&
                         !isUserAssociated(localUser.get(), identityProvider, authenticatedSubjectIdentifier)) {
-                    createAssociation(localUser.get(), identityProvider, authenticatedSubjectIdentifier);
+                    createAssociation(localUser.get(), identityProvider, authenticatedSubjectIdentifier,
+                            tokenReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain(), serviceProvider);
                 }
             }
 
@@ -551,7 +556,9 @@ public class TokenExchangeUtils {
      * @param subject  Subject identifier
      * @throws IdentityOAuth2Exception  Identity OAuth2 Exception.
      */
-    private static void createAssociation(User user, IdentityProvider idp, String subject) throws IdentityOAuth2Exception {
+    private static void createAssociation(User user, IdentityProvider idp, String subject, String tenantDomain,
+                                          ServiceProvider serviceProvider) throws
+            IdentityOAuth2Exception {
 
         FederatedAssociationManager federatedAssociationManager =
                 TokenExchangeComponentServiceHolder.getInstance().getFederatedAssociationManager();
@@ -563,6 +570,8 @@ public class TokenExchangeUtils {
             throw new IdentityOAuth2ServerException("Error while creating federated association for user: " +
                     user.getUsername(), e);
         }
+
+        auditImplicitAccountLink(user.getUserID(), idp, tenantDomain, serviceProvider);
 
         if (LoggerUtils.isDiagnosticLogsEnabled()) {
             DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder = new DiagnosticLog.DiagnosticLogBuilder(
@@ -1123,6 +1132,29 @@ public class TokenExchangeUtils {
             return UserLinkStrategy.OPTIONAL;
         } else {
             return UserLinkStrategy.DISABLED;
+        }
+    }
+
+    private static void auditImplicitAccountLink(String userId, IdentityProvider idp, String tenantDomain,
+                                                 ServiceProvider serviceProvider) {
+
+        JSONObject dataObject = new JSONObject();
+        dataObject.put(Constants.AuditConstants.IDP_ID, idp.getResourceId());
+        dataObject.put(Constants.AuditConstants.IDP_NAME, idp.getIdentityProviderName());
+        dataObject.put(Constants.AuditConstants.APPLICATION_ID, serviceProvider.getApplicationResourceId());
+        createAuditMessage(Constants.AuditConstants.IMPLICIT_ACCOUNT_LINK,
+                userId, dataObject, Constants.AuditConstants.AUDIT_SUCCESS, tenantDomain);
+    }
+
+    public static void createAuditMessage(String action, String target, JSONObject dataObject, String result,
+                                          String tenantDomain) {
+
+        if (!isLegacyAuditLogsDisabled()) {
+            String initiator = UserCoreUtil.addTenantDomainToEntry(CarbonConstants.REGISTRY_SYSTEM_USERNAME,
+                    tenantDomain);
+
+            CarbonConstants.AUDIT_LOG.info(String.format(Constants.AuditConstants.AUDIT_MESSAGE, initiator, action,
+                    target, dataObject, result));
         }
     }
 }

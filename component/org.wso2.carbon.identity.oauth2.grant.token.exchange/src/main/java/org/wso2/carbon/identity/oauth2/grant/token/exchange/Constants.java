@@ -72,6 +72,17 @@ public class Constants {
         }
     }
 
+    public static class AuditConstants {
+        public static final String AUDIT_MESSAGE =
+                "Initiator : %s | Action : %s | Target : %s | Data : %s | Result : %s ";
+        public static final String IMPLICIT_ACCOUNT_LINK = "Implicit-Account-Link";
+        public static final String AUDIT_SUCCESS = "Success";
+        public static final String IDP_ID = "identityProviderId";
+        public static final String IDP_NAME = "identityProviderName";
+        public static final String APPLICATION_ID = "applicationId";
+
+    }
+
     public enum UserLinkStrategy {
         DISABLED,
         OPTIONAL,
