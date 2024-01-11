@@ -191,6 +191,20 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                     handleException(OAuth2ErrorCodes.ACCESS_DENIED, errorMessage);
                 }
 
+                if (LoggerUtils.isDiagnosticLogsEnabled()) {
+                    DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder =
+                            new DiagnosticLog.DiagnosticLogBuilder(
+                                    Constants.LogConstants.COMPONENT_ID,
+                                    Constants.LogConstants.ActionIDs.AUTHORIZE_LINKED_LOCAL_USER
+                            );
+                    diagnosticLogBuilder
+                            .resultMessage("Server error while validating linked local user: " +
+                                    e.getLocalizedMessage())
+                            .logDetailLevel(DiagnosticLog.LogDetailLevel.APPLICATION)
+                            .resultStatus(DiagnosticLog.ResultStatus.FAILED);
+                    LoggerUtils.triggerDiagnosticLogEvent(diagnosticLogBuilder);
+                }
+
                 handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
             }
         }

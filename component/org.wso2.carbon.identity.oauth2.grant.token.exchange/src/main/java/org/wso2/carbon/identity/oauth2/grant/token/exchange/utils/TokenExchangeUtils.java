@@ -363,8 +363,8 @@ public class TokenExchangeUtils {
             UserLinkStrategy localUserLinking = resolveLocalUserLinkingStrategy(serviceProviderClaimConfig);
             Optional<User> localUser = Optional.empty();
             if (localUserLinking == UserLinkStrategy.OPTIONAL || localUserLinking == UserLinkStrategy.MANDATORY) {
-                // check if the federated user already has an associated local user.
-                // If so no need to perform claim based account lookup
+                // Check if the federated user already has an associated local user.
+                // If so no need to perform claim based account lookup.
                 localUser = getAlreadyAssociatedLocalUser(tokenReqMsgCtx, identityProvider,
                         authenticatedSubjectIdentifier);
             }
@@ -983,7 +983,7 @@ public class TokenExchangeUtils {
      * @return  Matching local user account
      * @throws IdentityOAuth2Exception  Error when resolving local user account
      */
-    public static User getLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx,
+    private static User getLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx,
                                     Map<String, String> claims) throws IdentityOAuth2Exception {
 
         String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
@@ -1122,6 +1122,7 @@ public class TokenExchangeUtils {
      * @return Assert local user behaviour.
      */
     private static UserLinkStrategy resolveLocalUserLinkingStrategy(ClaimConfig claimConfig) {
+
         if (claimConfig == null) {
             return UserLinkStrategy.DISABLED;
         }
