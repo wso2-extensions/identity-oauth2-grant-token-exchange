@@ -62,7 +62,32 @@ public class Constants {
         public static final String SUPPORTED_GRANT_TYPES = "SupportedGrantTypes";
     }
 
+    public static class LogConstants {
+
+        public static final String COMPONENT_ID = "oauth2-grant-token-exchange";
+
+        public static class ActionIDs {
+
+            public static final String AUTHORIZE_LINKED_LOCAL_USER = "authorize-linked-local-user";
+            public static final String GET_LOCAL_USER = "get-local-user";
+            public static final String CREATE_IMPLICIT_ACCOUNT_LINK = "create-implicit-account-link";
+        }
+    }
+
+    public static class AuditConstants {
+
+        public static final String AUDIT_MESSAGE =
+                "Initiator : %s | Action : %s | Target : %s | Data : %s | Result : %s ";
+        public static final String IMPLICIT_ACCOUNT_LINK = "Implicit-Account-Link";
+        public static final String AUDIT_SUCCESS = "Success";
+        public static final String IDP_ID = "identityProviderId";
+        public static final String IDP_NAME = "identityProviderName";
+        public static final String APPLICATION_ID = "applicationId";
+
+    }
+
     public enum UserLinkStrategy {
+
         DISABLED,
         OPTIONAL,
         MANDATORY

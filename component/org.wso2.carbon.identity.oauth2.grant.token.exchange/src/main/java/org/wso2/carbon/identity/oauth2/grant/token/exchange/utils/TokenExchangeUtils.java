@@ -31,6 +31,8 @@ import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.json.JSONObject;
+import org.wso2.carbon.CarbonConstants;
 import org.wso2.carbon.identity.application.authentication.framework.exception.UserIdNotFoundException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants;
@@ -49,6 +51,8 @@ import org.wso2.carbon.identity.application.common.util.IdentityApplicationConst
 import org.wso2.carbon.identity.application.common.util.IdentityApplicationManagementUtil;
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.base.IdentityException;
+import org.wso2.carbon.identity.central.log.mgt.utils.LogConstants;
+import org.wso2.carbon.identity.central.log.mgt.utils.LoggerUtils;
 import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
 import org.wso2.carbon.identity.claim.metadata.mgt.exception.ClaimMetadataException;
 import org.wso2.carbon.identity.claim.metadata.mgt.model.ExternalClaim;
@@ -78,7 +82,10 @@ import org.wso2.carbon.user.core.UserRealm;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.user.core.common.User;
 import org.wso2.carbon.user.core.service.RealmService;
+import org.wso2.carbon.user.core.util.UserCoreUtil;
+import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
+import static org.wso2.carbon.utils.CarbonUtils.isLegacyAuditLogsDisabled;
 
 import java.security.PublicKey;
 import java.security.cert.CertificateException;
@@ -356,8 +363,8 @@ public class TokenExchangeUtils {
             UserLinkStrategy localUserLinking = resolveLocalUserLinkingStrategy(serviceProviderClaimConfig);
             Optional<User> localUser = Optional.empty();
             if (localUserLinking == UserLinkStrategy.OPTIONAL || localUserLinking == UserLinkStrategy.MANDATORY) {
-                // check if the federated user already has an associated local user.
-                // If so no need to perform claim based account lookup
+                // Check if the federated user already has an associated local user.
+                // If so no need to perform claim based account lookup.
                 localUser = getAlreadyAssociatedLocalUser(tokenReqMsgCtx, identityProvider,
                         authenticatedSubjectIdentifier);
             }
@@ -372,7 +379,8 @@ public class TokenExchangeUtils {
                 localUser = Optional.ofNullable(getLocalUser(tokenReqMsgCtx, mappedLocalClaims));
                 if (localUser.isPresent() &&
                         !isUserAssociated(localUser.get(), identityProvider, authenticatedSubjectIdentifier)) {
-                    createAssociation(localUser.get(), identityProvider, authenticatedSubjectIdentifier);
+                    createAssociation(localUser.get(), identityProvider, authenticatedSubjectIdentifier,
+                            tokenReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain(), serviceProvider);
                 }
             }
 
@@ -507,9 +515,28 @@ public class TokenExchangeUtils {
         try {
             String localUsername = federatedAssociationManager.getUserForFederatedAssociation(tenantDomain,
                     idp.getIdentityProviderName(), subjectIdentifier);
+
             if (StringUtils.isNotBlank(localUsername)) {
                 AbstractUserStoreManager userStoreManager = getUserStoreManager(tokReqMsgCtx);
-                return Optional.ofNullable(userStoreManager.getUser(null, localUsername));
+                User user = userStoreManager.getUser(null, localUsername);
+
+                if (user != null && LoggerUtils.isDiagnosticLogsEnabled()) {
+                    ServiceProvider application = getServiceProvider(tokReqMsgCtx);
+                    DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder =
+                            new DiagnosticLog.DiagnosticLogBuilder(
+                                    Constants.LogConstants.COMPONENT_ID,
+                                    Constants.LogConstants.ActionIDs.GET_LOCAL_USER
+                            );
+                    diagnosticLogBuilder
+                            .resultMessage("Found already linked local user: " + user.getUserID())
+                            .logDetailLevel(DiagnosticLog.LogDetailLevel.APPLICATION)
+                            .resultStatus(DiagnosticLog.ResultStatus.SUCCESS)
+                            .inputParam(LogConstants.InputKeys.APPLICATION_ID, application.getApplicationResourceId())
+                            .inputParam(LogConstants.InputKeys.APPLICATION_NAME, application.getApplicationName());
+                    LoggerUtils.triggerDiagnosticLogEvent(diagnosticLogBuilder);
+                }
+
+                return Optional.ofNullable(user);
             }
 
         } catch (FederatedAssociationManagerException e) {
@@ -529,7 +556,9 @@ public class TokenExchangeUtils {
      * @param subject  Subject identifier
      * @throws IdentityOAuth2Exception  Identity OAuth2 Exception.
      */
-    private static void createAssociation(User user, IdentityProvider idp, String subject) throws IdentityOAuth2Exception {
+    private static void createAssociation(User user, IdentityProvider idp, String subject, String tenantDomain,
+                                          ServiceProvider serviceProvider) throws
+            IdentityOAuth2Exception {
 
         FederatedAssociationManager federatedAssociationManager =
                 TokenExchangeComponentServiceHolder.getInstance().getFederatedAssociationManager();
@@ -540,6 +569,21 @@ public class TokenExchangeUtils {
         } catch (FederatedAssociationManagerException e) {
             throw new IdentityOAuth2ServerException("Error while creating federated association for user: " +
                     user.getUsername(), e);
+        }
+
+        auditImplicitAccountLink(user.getUserID(), idp, tenantDomain, serviceProvider);
+
+        if (LoggerUtils.isDiagnosticLogsEnabled()) {
+            DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder = new DiagnosticLog.DiagnosticLogBuilder(
+                    Constants.LogConstants.COMPONENT_ID,
+                    Constants.LogConstants.ActionIDs.CREATE_IMPLICIT_ACCOUNT_LINK
+            );
+            diagnosticLogBuilder
+                    .resultMessage("Created account link for user: " + user.getUserID())
+                    .logDetailLevel(DiagnosticLog.LogDetailLevel.APPLICATION)
+                    .resultStatus(DiagnosticLog.ResultStatus.SUCCESS)
+                    .inputParam(LogConstants.InputKeys.IDP, idp.getIdentityProviderName());
+            LoggerUtils.triggerDiagnosticLogEvent(diagnosticLogBuilder);
         }
     }
 
@@ -714,7 +758,7 @@ public class TokenExchangeUtils {
                     + tenantDomain, e);
         }
         AuthenticatedUser user = tokReqMsgCtx.getAuthorizedUser();
-        if (MapUtils.isNotEmpty(mappedClaims)) {
+        if (MapUtils.isNotEmpty(mappedClaims) && user.isFederatedUser()) {
             user.setUserAttributes(FrameworkUtils.buildClaimMappings(mappedClaims));
         }
         tokReqMsgCtx.setAuthorizedUser(user);
@@ -939,7 +983,7 @@ public class TokenExchangeUtils {
      * @return  Matching local user account
      * @throws IdentityOAuth2Exception  Error when resolving local user account
      */
-    public static User getLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx,
+    private static User getLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx,
                                     Map<String, String> claims) throws IdentityOAuth2Exception {
 
         String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
@@ -951,6 +995,25 @@ public class TokenExchangeUtils {
                 List<User> users = userStoreManager.getUserListWithID(claim.getKey(), claim.getValue(), null);
                     if (users.size() == 1) {
                         user = users.get(0);
+
+                        if (LoggerUtils.isDiagnosticLogsEnabled()) {
+                            ServiceProvider application = getServiceProvider(tokReqMsgCtx);
+                            DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder =
+                                    new DiagnosticLog.DiagnosticLogBuilder(
+                                        Constants.LogConstants.COMPONENT_ID,
+                                        Constants.LogConstants.ActionIDs.GET_LOCAL_USER
+                            );
+                            diagnosticLogBuilder
+                                    .resultMessage("Found local user with id: " + user.getUserID() +
+                                            " using attribute: " + claim.getKey())
+                                    .logDetailLevel(DiagnosticLog.LogDetailLevel.APPLICATION)
+                                    .resultStatus(DiagnosticLog.ResultStatus.SUCCESS)
+                                    .inputParam(LogConstants.InputKeys.APPLICATION_ID,
+                                            application.getApplicationResourceId())
+                                    .inputParam(LogConstants.InputKeys.APPLICATION_NAME,
+                                            application.getApplicationName());
+                            LoggerUtils.triggerDiagnosticLogEvent(diagnosticLogBuilder);
+                        }
                         break;
                     }
             }
@@ -1059,6 +1122,7 @@ public class TokenExchangeUtils {
      * @return Assert local user behaviour.
      */
     private static UserLinkStrategy resolveLocalUserLinkingStrategy(ClaimConfig claimConfig) {
+
         if (claimConfig == null) {
             return UserLinkStrategy.DISABLED;
         }
@@ -1069,6 +1133,29 @@ public class TokenExchangeUtils {
             return UserLinkStrategy.OPTIONAL;
         } else {
             return UserLinkStrategy.DISABLED;
+        }
+    }
+
+    private static void auditImplicitAccountLink(String userId, IdentityProvider idp, String tenantDomain,
+                                                 ServiceProvider serviceProvider) {
+
+        JSONObject dataObject = new JSONObject();
+        dataObject.put(Constants.AuditConstants.IDP_ID, idp.getResourceId());
+        dataObject.put(Constants.AuditConstants.IDP_NAME, idp.getIdentityProviderName());
+        dataObject.put(Constants.AuditConstants.APPLICATION_ID, serviceProvider.getApplicationResourceId());
+        createAuditMessage(Constants.AuditConstants.IMPLICIT_ACCOUNT_LINK,
+                userId, dataObject, Constants.AuditConstants.AUDIT_SUCCESS, tenantDomain);
+    }
+
+    public static void createAuditMessage(String action, String target, JSONObject dataObject, String result,
+                                          String tenantDomain) {
+
+        if (!isLegacyAuditLogsDisabled()) {
+            String initiator = UserCoreUtil.addTenantDomainToEntry(CarbonConstants.REGISTRY_SYSTEM_USERNAME,
+                    tenantDomain);
+
+            CarbonConstants.AUDIT_LOG.info(String.format(Constants.AuditConstants.AUDIT_MESSAGE, initiator, action,
+                    target, dataObject, result));
         }
     }
 }
