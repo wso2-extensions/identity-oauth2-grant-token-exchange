@@ -43,6 +43,7 @@ import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.token.handlers.grant.AbstractAuthorizationGrantHandler;
 import org.wso2.carbon.identity.oauth2.util.ClaimsUtil;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
+import org.wso2.carbon.user.api.UserStoreClientException;
 import org.wso2.carbon.user.core.UserStoreException;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
@@ -156,16 +157,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                             " is locked";
 
                     if (LoggerUtils.isDiagnosticLogsEnabled()) {
-                        DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder =
-                                new DiagnosticLog.DiagnosticLogBuilder(
-                                        Constants.LogConstants.COMPONENT_ID,
-                                        Constants.LogConstants.ActionIDs.AUTHORIZE_LINKED_LOCAL_USER
-                                );
-                        diagnosticLogBuilder
-                                .resultMessage(errorMessage)
-                                .logDetailLevel(DiagnosticLog.LogDetailLevel.APPLICATION)
-                                .resultStatus(DiagnosticLog.ResultStatus.FAILED);
-                        LoggerUtils.triggerDiagnosticLogEvent(diagnosticLogBuilder);
+                        triggerAccountLinkFailedDiagnosticLog(errorMessage);
                     }
 
                     handleException(OAuth2ErrorCodes.ACCESS_DENIED, errorMessage);
@@ -176,33 +168,21 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                             " cause: " + e.getCause().getLocalizedMessage();
 
                     if (LoggerUtils.isDiagnosticLogsEnabled()) {
-                        DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder =
-                                new DiagnosticLog.DiagnosticLogBuilder(
-                                        Constants.LogConstants.COMPONENT_ID,
-                                        Constants.LogConstants.ActionIDs.AUTHORIZE_LINKED_LOCAL_USER
-                                );
-                        diagnosticLogBuilder
-                                .resultMessage(errorMessage)
-                                .logDetailLevel(DiagnosticLog.LogDetailLevel.APPLICATION)
-                                .resultStatus(DiagnosticLog.ResultStatus.FAILED);
-                        LoggerUtils.triggerDiagnosticLogEvent(diagnosticLogBuilder);
+                        triggerAccountLinkFailedDiagnosticLog(errorMessage);
                     }
 
                     handleException(OAuth2ErrorCodes.ACCESS_DENIED, errorMessage);
                 }
 
-                if (LoggerUtils.isDiagnosticLogsEnabled()) {
-                    DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder =
-                            new DiagnosticLog.DiagnosticLogBuilder(
-                                    Constants.LogConstants.COMPONENT_ID,
-                                    Constants.LogConstants.ActionIDs.AUTHORIZE_LINKED_LOCAL_USER
-                            );
-                    diagnosticLogBuilder
-                            .resultMessage("Server error while validating linked local user: " +
-                                    e.getLocalizedMessage())
-                            .logDetailLevel(DiagnosticLog.LogDetailLevel.APPLICATION)
-                            .resultStatus(DiagnosticLog.ResultStatus.FAILED);
-                    LoggerUtils.triggerDiagnosticLogEvent(diagnosticLogBuilder);
+                if (e.getCause() instanceof UserStoreClientException) {
+                    String errorMessage = "Error while validating linked local user: " +
+                            e.getLocalizedMessage();
+
+                    if (LoggerUtils.isDiagnosticLogsEnabled()) {
+                        triggerAccountLinkFailedDiagnosticLog(errorMessage);
+                    }
+
+                    handleException(OAuth2ErrorCodes.ACCESS_DENIED, errorMessage);
                 }
 
                 handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
@@ -344,6 +324,20 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             String tenantDomain) throws IdentityOAuth2Exception {
 
         return getIDP(jwtIssuer, tenantDomain);
+    }
+
+    private void triggerAccountLinkFailedDiagnosticLog(String errorMessage) {
+
+        DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder =
+                new DiagnosticLog.DiagnosticLogBuilder(
+                        Constants.LogConstants.COMPONENT_ID,
+                        Constants.LogConstants.ActionIDs.AUTHORIZE_LINKED_LOCAL_USER
+                );
+        diagnosticLogBuilder
+                .resultMessage(errorMessage)
+                .logDetailLevel(DiagnosticLog.LogDetailLevel.APPLICATION)
+                .resultStatus(DiagnosticLog.ResultStatus.FAILED);
+        LoggerUtils.triggerDiagnosticLogEvent(diagnosticLogBuilder);
     }
 
     private String getTenantDomain(OAuthTokenReqMessageContext tokReqMsgCtx) {
