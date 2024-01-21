@@ -431,13 +431,15 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 validityPeriodInMin = Integer.parseInt(validityPeriodProp);
             } catch (NumberFormatException e) {
                 validityPeriodInMin = Constants.DEFAULT_IAT_VALIDITY_PERIOD_IN_MIN;
-                log.warn("Invalid value: " + validityPeriodProp + " is set for IAT validity period. Using "
-                        + "default value: " + validityPeriodInMin + " minutes.");
+                log.error("Invalid value: " + validityPeriodProp + " is set for IAT validity period. Using "
+                        + "default value: " + validityPeriodInMin + " minutes.", e);
             }
         } else {
             validityPeriodInMin = Constants.DEFAULT_IAT_VALIDITY_PERIOD_IN_MIN;
-            log.warn("Empty value is set for IAT validity period. Using default value: " + validityPeriodInMin
-                    + " minutes.");
+            if (log.isDebugEnabled()) {
+                log.debug("Empty value is set for IAT validity period. Using default value: " + validityPeriodInMin
+                        + " minutes.");
+            }
         }
     }
 
