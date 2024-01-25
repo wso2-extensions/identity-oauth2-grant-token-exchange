@@ -217,7 +217,7 @@
     <properties>
         <apache.felix.scr.ds.annotations.version>1.2.4</apache.felix.scr.ds.annotations.version>
         <carbon.p2.plugin.version>1.5.3</carbon.p2.plugin.version>
-        <carbon.identity.oauth.package.import.version.range>[6.0.0, 7.0.0)</carbon.identity.oauth.package.import.version.range>
+        <carbon.identity.oauth.package.import.version.range>[6.0.0, 8.0.0)</carbon.identity.oauth.package.import.version.range>
         <carbon.identity.oauth.version>6.4.111</carbon.identity.oauth.version>
         <carbon.identity.framework.version>5.25.481</carbon.identity.framework.version>
         <commons-lang.wso2.osgi.version.range>[2.6.0,3.0.0)</commons-lang.wso2.osgi.version.range>
@@ -227,7 +227,7 @@
         <oltu.package.import.version.range>[1.0.0, 2.0.0)</oltu.package.import.version.range>
         <oltu.version>1.0.0.wso2v3</oltu.version>
         <imp.pkg.version.javax.servlet>[2.6.0, 3.0.0)</imp.pkg.version.javax.servlet>
-        <carbon.identity.package.import.version.range>[5.0.0, 7.0.0)</carbon.identity.package.import.version.range>
+        <carbon.identity.package.import.version.range>[5.0.0, 8.0.0)</carbon.identity.package.import.version.range>
         <commons-collections.version>3.2.2.wso2v1</commons-collections.version>
         <commons-collections.wso2.osgi.version.range>[3.2.0,4.0.0)</commons-collections.wso2.osgi.version.range>
         <carbon.kernel.package.import.version.range>[4.9.0, 5.0.0)</carbon.kernel.package.import.version.range>
