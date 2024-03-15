@@ -62,6 +62,7 @@ import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
+import org.wso2.carbon.identity.oauth2.IdentityOAuth2ClientException;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ServerException;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants;
@@ -419,8 +420,15 @@ public class TokenExchangeUtils {
 
         // If the IdP is the resident idp, fetch the access token data object for further processing.
         if (Constants.LOCAL_IDP_NAME.equals(identityProvider.getIdentityProviderName())) {
-            AccessTokenDO accessTokenDO = OAuth2Util.getAccessTokenDOFromTokenIdentifier(
-                    claimsSet.getJWTID(), false);
+            AccessTokenDO accessTokenDO;
+            try {
+                accessTokenDO = OAuth2Util.getAccessTokenDOFromTokenIdentifier(
+                        claimsSet.getJWTID(), false);
+            } catch (IllegalArgumentException e) {
+                throw new IdentityOAuth2ClientException(OAuth2ErrorCodes.INVALID_REQUEST,
+                        Constants.SUBJECT_TOKEN_IS_NOT_ACTIVE_ERROR_MESSAGE, e);
+            }
+
             boolean isFederated = accessTokenDO.getAuthzUser().isFederatedUser();
             authenticatedUser.setFederatedUser(isFederated);
             authenticatedUser.setTenantDomain(accessTokenDO.getAuthzUser().getTenantDomain());

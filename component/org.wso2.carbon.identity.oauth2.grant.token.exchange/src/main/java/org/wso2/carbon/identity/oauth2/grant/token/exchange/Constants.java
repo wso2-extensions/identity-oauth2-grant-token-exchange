@@ -38,6 +38,8 @@ public class Constants {
     public static final String LOCAL_IDP_NAME = "LOCAL";
     public static final String ERROR_GET_RESIDENT_IDP =
             "Error while getting Resident Identity Provider of '%s' tenant.";
+    public static final String SUBJECT_TOKEN_IS_NOT_ACTIVE_ERROR_MESSAGE =
+            "Invalid Subject Token. Subject token is not ACTIVE.";
 
     public static final String OAUTH_APP_DO_PROPERTY = "OAuthAppDO";
 
