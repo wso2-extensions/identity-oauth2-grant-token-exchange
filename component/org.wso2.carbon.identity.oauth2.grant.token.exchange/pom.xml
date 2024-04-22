@@ -87,6 +87,10 @@
             <artifactId>org.wso2.carbon.identity.oauth</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.wso2.carbon.identity.inbound.auth.oauth2</groupId>
+            <artifactId>org.wso2.carbon.identity.oauth.common</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.wso2.carbon.identity.governance</groupId>
             <artifactId>org.wso2.carbon.identity.recovery</artifactId>
         </dependency>
@@ -128,6 +132,10 @@
             <artifactId>axiom</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.wso2.carbon</groupId>
+            <artifactId>org.wso2.carbon.utils</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.testng</groupId>
             <artifactId>testng</artifactId>
             <scope>test</scope>
@@ -160,6 +168,8 @@
                             !org.wso2.carbon.identity.oauth2.grant.token.exchange.*,
                             org.wso2.carbon.identity.oauth2.*;
                             version="${carbon.identity.oauth.package.import.version.range}",
+                            org.wso2.carbon.identity.oauth.common.*;
+                            version="${carbon.identity.oauth.package.import.version.range}",
                             org.wso2.carbon.identity.oauth.*;
                             version="${carbon.identity.oauth.package.import.version.range}",
                             org.wso2.carbon.identity.base; version="${carbon.identity.package.import.version.range}",
@@ -179,6 +189,8 @@
                             org.wso2.carbon.identity.user.profile.mgt.*;
                             version="${carbon.identity.package.import.version.range}",
                             org.wso2.carbon.utils.*; version="${carbon.kernel.package.import.version.range}",
+                            org.wso2.carbon.utils.security.*; version="${carbon.kernel.package.import.version.range}",
+                            org.wso2.carbon.core.util.*; version="${carbon.kernel.package.import.version.range}",
                             org.wso2.carbon.identity.recovery.*;
                             version="${identity.governance.imp.pkg.version.range}",
                             org.wso2.carbon.identity.central.log.mgt.utils;

@@ -33,6 +33,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.json.JSONObject;
 import org.wso2.carbon.CarbonConstants;
+import org.wso2.carbon.core.util.KeyStoreManager;
 import org.wso2.carbon.identity.application.authentication.framework.exception.UserIdNotFoundException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants;
@@ -86,6 +87,8 @@ import org.wso2.carbon.user.core.service.RealmService;
 import org.wso2.carbon.user.core.util.UserCoreUtil;
 import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
+import org.wso2.carbon.utils.security.KeystoreUtils;
+
 import static org.wso2.carbon.utils.CarbonUtils.isLegacyAuditLogsDisabled;
 
 import java.security.PublicKey;
@@ -341,6 +344,49 @@ public class TokenExchangeUtils {
         authenticatedUser.setFederatedIdPName(identityProvider.getIdentityProviderName());
         tokenReqMsgCtx.setAuthorizedUser(authenticatedUser);
     }
+
+    /**
+     * To set the authorized user to message context.
+     *
+     * @param tokenReqMsgCtx                 Token request message context.
+     * @param identityProvider               Identity Provider
+     * @param authenticatedSubjectIdentifier Authenticated Subject Identifier.
+     * @param claimsSet                      Claim Set in the subject token.
+     * @param tenantDomain
+     * @throws IdentityOAuth2Exception Identity OAuth2 Exception.
+     */
+    public static void setAuthorizedUserForImpersonation(OAuthTokenReqMessageContext tokenReqMsgCtx,
+                                                         IdentityProvider identityProvider, String authenticatedSubjectIdentifier,
+                                                         JWTClaimsSet claimsSet, String tenantDomain)
+            throws IdentityOAuth2Exception {
+
+        try {
+            // Resolve the username using the authenticated subject identifier
+            String username = OAuth2Util.resolveUsernameFromUserId(tenantDomain, authenticatedSubjectIdentifier);
+
+            // Retrieve the user store domain from the authenticated subject identifier
+            String userStore = OAuth2Util.getUserStoreDomainFromUserId(authenticatedSubjectIdentifier);
+
+            // Retrieve or create an authenticated user object
+            AuthenticatedUser authenticatedUser = OAuth2Util.getUserFromUserName(username);
+
+            // Set user attributes
+            authenticatedUser.setUserId(authenticatedSubjectIdentifier);
+            authenticatedUser.setUserStoreDomain(userStore);
+            authenticatedUser.setAuthenticatedSubjectIdentifier(authenticatedSubjectIdentifier);
+
+            // Set the authorized user in the OAuth token request message context
+            tokenReqMsgCtx.setAuthorizedUser(authenticatedUser);
+
+            // Populate IDP groups attribute
+            populateIdPGroupsAttribute(tokenReqMsgCtx, identityProvider, claimsSet);
+        } catch (UserStoreException e) {
+            // Handle user store exception
+            throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Failed to resolve username from authenticated subject identifier", e);
+        }
+    }
+
 
     /**
      * To set the authorized user to message context.
@@ -1164,6 +1210,47 @@ public class TokenExchangeUtils {
 
             CarbonConstants.AUDIT_LOG.info(String.format(Constants.AuditConstants.AUDIT_MESSAGE, initiator, action,
                     target, dataObject, result));
+        }
+    }
+
+    /**
+     * Validate the signature of the subject token.
+     *
+     * @param subjectToken  The subject token to be validated
+     * @param tenantDomain  The domain of the tenant
+     * @return              True if the signature is valid, false otherwise
+     */
+    public static boolean validateTokenSignature(SignedJWT subjectToken, String tenantDomain) {
+
+        try {
+            // Get the tenant ID based on the domain
+            int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
+
+            // Get the public key based on the tenant
+            RSAPublicKey publicKey;
+            KeyStoreManager keyStoreManager = KeyStoreManager.getInstance(tenantId);
+
+            if (!MultitenantConstants.SUPER_TENANT_DOMAIN_NAME.equals(tenantDomain)) {
+                // For non-super tenant, retrieve the public key from the tenant's keystore
+                String fileName = KeystoreUtils.getKeyStoreFileLocation(tenantDomain);
+                publicKey = (RSAPublicKey) keyStoreManager.getKeyStore(fileName)
+                        .getCertificate(tenantDomain).getPublicKey();
+            } else {
+                // For super tenant, use the default public key
+                publicKey = (RSAPublicKey) keyStoreManager.getDefaultPublicKey();
+            }
+
+            // Verify the token signature using the public key
+            JWSVerifier verifier = new RSASSAVerifier(publicKey);
+            return subjectToken.verify(verifier);
+        } catch (JOSEException | ParseException e) {
+            // Handle JOSEException and ParseException
+            log.debug("Error occurred while validating subject token signature.", e);
+            return false;
+        } catch (Exception e) {
+            // Handle other exceptions
+            log.error("Error occurred while validating subject token signature.", e);
+            return false;
         }
     }
 }

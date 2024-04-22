@@ -46,14 +46,20 @@ public class Constants {
     public static class TokenExchangeConstants {
 
         public static final String TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
-        static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
-        static final String AUDIENCE = "audience";
-        static final String INVALID_TARGET = "invalid_target";
-        static final String ISSUED_TOKEN_TYPE = "issued_token_type";
-        static final String JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt";
-        static final String SUBJECT_TOKEN = "subject_token";
-        static final String SUBJECT_TOKEN_TYPE = "subject_token_type";
-        static final String REQUESTED_TOKEN_TYPE = "requested_token_type";
+        public static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
+        public  static final String AUDIENCE = "audience";
+        public static final String INVALID_TARGET = "invalid_target";
+        public static final String ISSUED_TOKEN_TYPE = "issued_token_type";
+        public static final String JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt";
+        public static final String SUBJECT_TOKEN = "subject_token";
+        public static final String SUBJECT_TOKEN_TYPE = "subject_token_type";
+        public static final String ACTOR_TOKEN = "actor_token";
+        public static final String ACTOR_TOKEN_TYPE = "actor_token_type";
+        public static final String REQUESTED_TOKEN_TYPE = "requested_token_type";
+        public static final String MAY_ACT = "may_act";
+        public static final String SUB = "sub";
+        public static final String SCOPE = "scope";
+
     }
 
     public static class ConfigElements {
