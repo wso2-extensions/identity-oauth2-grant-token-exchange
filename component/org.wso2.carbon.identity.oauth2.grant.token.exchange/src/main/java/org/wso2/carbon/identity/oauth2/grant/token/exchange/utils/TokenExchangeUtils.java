@@ -356,7 +356,8 @@ public class TokenExchangeUtils {
      * @throws IdentityOAuth2Exception Identity OAuth2 Exception.
      */
     public static void setAuthorizedUserForImpersonation(OAuthTokenReqMessageContext tokenReqMsgCtx,
-                                                         IdentityProvider identityProvider, String authenticatedSubjectIdentifier,
+                                                         IdentityProvider identityProvider,
+                                                         String authenticatedSubjectIdentifier,
                                                          JWTClaimsSet claimsSet, String tenantDomain)
             throws IdentityOAuth2Exception {
 

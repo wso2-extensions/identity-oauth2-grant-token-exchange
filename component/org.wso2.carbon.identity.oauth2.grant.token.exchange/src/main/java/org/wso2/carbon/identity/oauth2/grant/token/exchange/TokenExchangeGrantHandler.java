@@ -54,8 +54,10 @@ import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
@@ -130,9 +132,11 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         String tenantDomain = getTenantDomain(tokReqMsgCtx);
-        if (isImpersonationRequest(tokReqMsgCtx, requestParams)) {
+        if (isImpersonationRequest(requestParams)) {
             validateSubjectToken(tokReqMsgCtx, requestParams, tenantDomain);
             validateActorToken(tokReqMsgCtx, requestParams, tenantDomain);
+            // Set impersonation flag
+            tokReqMsgCtx.setImpersonationRequest(true);
             setAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
 
             return true;
@@ -153,6 +157,18 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         return true;
     }
 
+    /**
+     * Sets the authorized user for an OAuth token request context based on a subject token.
+     * This method extracts a signed JWT from the provided request parameters, validates it,
+     * and resolves the subject (user) contained within the JWT. It then sets the resolved subject
+     * as the authorized user in the OAuth token request context, specifically for impersonation scenarios.
+     *
+     * @param tokReqMsgCtx   The OAuth token request message context.
+     * @param requestParams  The map containing request parameters, including the subject token.
+     * @param tenantDomain   The tenant domain within which the identity provider and user reside.
+     * @throws IdentityOAuth2Exception if an error occurs while processing the subject token,
+     *                                  resolving the identity provider, or setting the authorized user.
+     */
     private void setAuthorizedUser(OAuthTokenReqMessageContext tokReqMsgCtx,
                                    Map<String, String> requestParams,
                                    String tenantDomain) throws IdentityOAuth2Exception {
@@ -211,13 +227,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         // Validate if the subject token is signed by the AS
         if (!validateTokenSignature(signedJWT, tenantDomain)) {
-            log.info("mathu");
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication invalid");
         }
 
-        // Check the validity of the JWT
-        // TODO:
-//        checkJWTValidity(claimsSet);
+        checkJWTValidity(claimsSet);
 
         // Validate the audience of the subject token
         List<String> audiences = claimsSet.getAudience();
@@ -232,20 +245,43 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         tokReqMsgCtx.addProperty(IMPERSONATING_ACTOR, impersonator);
-        tokReqMsgCtx.setScope(getScopes(claimsSet));
+        tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
     }
 
     /**
      * Retrieves the scopes claim from the JWTClaimsSet object and splits it into an array of individual scope strings.
      * Assumes that the scopes claim is represented as a space-delimited string.
      *
-     * @param claimsSet The JWTClaimsSet object containing the token claims.
+     * @param claimsSet    The JWTClaimsSet object containing the token claims.
+     * @param tokReqMsgCtx
      * @return An array of individual scope strings extracted from the scopes claim.
      */
-    private String[] getScopes( JWTClaimsSet claimsSet) {
-        // Retrieve the scopes claim from the claims set
-        String scopesObject = (String) claimsSet.getClaims().get(SCOPE);
-        return scopesObject.split("\\s+");
+    private String[] getScopes(JWTClaimsSet claimsSet, OAuthTokenReqMessageContext tokReqMsgCtx) {
+
+        String[] requestedScopes = tokReqMsgCtx.getScope();
+        String[] approvedScopes = ((String) claimsSet.getClaims().get(SCOPE)).split("\\s+");
+        if (requestedScopes == null) {
+
+            return approvedScopes;
+        } else {
+
+            return filterRequestedScopes(requestedScopes, approvedScopes);
+        }
+    }
+
+    private String[] filterRequestedScopes(String[] requestedScopes, String[] approvedScopes) {
+
+        // Convert arrayA to a HashSet
+        Set<String> approvedScopesSet = new HashSet<>(Arrays.asList(approvedScopes));
+
+        Set<String> commonScopes = new HashSet<>();
+        for (String element : requestedScopes) {
+            if (approvedScopesSet.contains(element)) {
+                commonScopes.add(element);
+            }
+        }
+
+        return commonScopes.toArray(new String[0]);
     }
 
 
@@ -302,8 +338,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         // Check the validity of the JWT
-        // TODO:
-//        checkJWTValidity(claimsSet);
+        checkJWTValidity(claimsSet);
 
         // Validate the issuer of the subject token
         String jwtIssuer = claimsSet.getIssuer();
@@ -330,27 +365,16 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * Checks if the token request is an impersonation request by inspecting the provided request parameters.
      * If all required parameters for impersonation are present, sets the necessary properties in the OAuthTokenReqMessageContext.
      *
-     * @param tokReqMsgCtx  The OAuthTokenReqMessageContext object representing the OAuth token request message context.
      * @param requestParams A Map<String, String> containing the request parameters.
      * @return true if the request is an impersonation request and false otherwise.
      */
-    private boolean isImpersonationRequest(OAuthTokenReqMessageContext tokReqMsgCtx,
-                                           Map<String, String> requestParams) {
+    private boolean isImpersonationRequest(Map<String, String> requestParams) {
         // Check if all required parameters are present
         if (requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN)
                 && requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)
                 && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)
                 && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE)) {
 
-            // Set OAuth2AccessTokenReqDTO parameters
-            OAuth2AccessTokenReqDTO accessTokenReqDTO = tokReqMsgCtx.getOauth2AccessTokenReqDTO();
-            accessTokenReqDTO.setSubjectToken(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
-            accessTokenReqDTO.setSubjectTokenType(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN_TYPE));
-            accessTokenReqDTO.setActorToken(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
-            accessTokenReqDTO.setActorTokenType(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN_TYPE));
-
-            // Set impersonation flag
-            tokReqMsgCtx.setImpersonationRequest(true);
             return true;
         }
         return false;
