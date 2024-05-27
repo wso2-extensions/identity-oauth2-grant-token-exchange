@@ -35,7 +35,6 @@ import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLock
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
-import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenReqDTO;
 import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenRespDTO;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.internal.TokenExchangeServiceComponent;
@@ -138,7 +137,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             // Set impersonation flag
             tokReqMsgCtx.setImpersonationRequest(true);
             setAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
-
             return true;
         }
         validateRequestedTokenType(requestedTokenType);
@@ -158,32 +156,18 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     }
 
     /**
-     * Sets the authorized user for an OAuth token request context based on a subject token.
-     * This method extracts a signed JWT from the provided request parameters, validates it,
-     * and resolves the subject (user) contained within the JWT. It then sets the resolved subject
-     * as the authorized user in the OAuth token request context, specifically for impersonation scenarios.
+     * Checks if the token request is an impersonation request by inspecting the provided request parameters.
      *
-     * @param tokReqMsgCtx   The OAuth token request message context.
-     * @param requestParams  The map containing request parameters, including the subject token.
-     * @param tenantDomain   The tenant domain within which the identity provider and user reside.
-     * @throws IdentityOAuth2Exception if an error occurs while processing the subject token,
-     *                                  resolving the identity provider, or setting the authorized user.
+     * @param requestParams A Map<String, String> containing the request parameters.
+     * @return true if the request is an impersonation request and false otherwise.
      */
-    private void setAuthorizedUser(OAuthTokenReqMessageContext tokReqMsgCtx,
-                                   Map<String, String> requestParams,
-                                   String tenantDomain) throws IdentityOAuth2Exception {
+    private boolean isImpersonationRequest(Map<String, String> requestParams) {
 
-        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
-
-        JWTClaimsSet claimsSet = getClaimSet(signedJWT);
-        String jwtIssuer = claimsSet.getIssuer();
-        IdentityProvider identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
-        String subject = resolveSubject(claimsSet);
-
-        setAuthorizedUserForImpersonation(tokReqMsgCtx, identityProvider, subject, claimsSet, tenantDomain);
-        if (log.isDebugEnabled()) {
-            log.debug("Subject(sub) found in JWT: " + subject + " and set as the Authorized User.");
-        }
+        // Check if all required parameters are present
+        return requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN)
+                && requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)
+                && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)
+                && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
     }
 
     /**
@@ -191,7 +175,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * Checks if the subject token is signed by the Authorization Server (AS),
      * validates the token claims, and ensures it's intended for the correct audience and issuer.
      *
-     * @param tokReqMsgCtx
+     * @param tokReqMsgCtx  OauthTokenReqMessageContext
      * @param requestParams A Map<String, String> containing the request parameters.
      * @param tenantDomain  The tenant domain associated with the request.
      * @throws IdentityOAuth2Exception If there's an error during token validation.
@@ -240,9 +224,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         // Validate the issuer of the subject token
         String jwtIssuer = claimsSet.getIssuer();
-        if (!validateTokenIssuer(jwtIssuer, tenantDomain)) {
-            handleException(TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
-        }
+        validateTokenIssuer(jwtIssuer, tenantDomain);
 
         tokReqMsgCtx.addProperty(IMPERSONATING_ACTOR, impersonator);
         tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
@@ -261,19 +243,15 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         String[] requestedScopes = tokReqMsgCtx.getScope();
         String[] approvedScopes = ((String) claimsSet.getClaims().get(SCOPE)).split("\\s+");
         if (requestedScopes == null) {
-
             return approvedScopes;
         } else {
-
             return filterRequestedScopes(requestedScopes, approvedScopes);
         }
     }
 
     private String[] filterRequestedScopes(String[] requestedScopes, String[] approvedScopes) {
 
-        // Convert arrayA to a HashSet
         Set<String> approvedScopesSet = new HashSet<>(Arrays.asList(approvedScopes));
-
         Set<String> commonScopes = new HashSet<>();
         for (String element : requestedScopes) {
             if (approvedScopesSet.contains(element)) {
@@ -300,7 +278,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * Checks if the subject token is signed by the Authorization Server (AS),
      * validates the token claims, and ensures it's intended for the correct audience and issuer.
      *
-     * @param tokReqMsgCtx
+     * @param tokReqMsgCtx  OauthTokenReqMessageContext
      * @param requestParams A Map<String, String> containing the request parameters.
      * @param tenantDomain  The tenant domain associated with the request.
      * @throws IdentityOAuth2Exception If there's an error during token validation.
@@ -342,17 +320,17 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         // Validate the issuer of the subject token
         String jwtIssuer = claimsSet.getIssuer();
-        if (!validateTokenIssuer(jwtIssuer, tenantDomain)) {
-            handleException(TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
-        }
+        validateTokenIssuer(jwtIssuer, tenantDomain);
 
         tokReqMsgCtx.addProperty(IMPERSONATED_SUBJECT, actorTokenSubject);
     }
 
-    private boolean validateTokenIssuer(String jwtIssuer, String tenantDomain) throws IdentityOAuth2Exception {
+    private void validateTokenIssuer(String jwtIssuer, String tenantDomain) throws IdentityOAuth2Exception {
 
         String expectedIssuer = OAuth2Util.getIdTokenIssuer(tenantDomain);
-        return StringUtils.equals(expectedIssuer, jwtIssuer);
+        if (!StringUtils.equals(expectedIssuer, jwtIssuer)) {
+            handleException(TokenExchangeConstants.INVALID_TARGET, "Invalid issuer values provided");
+        }
     }
     private boolean validateSubjectTokenAudience(List<String> audiences,
                                                  OAuthTokenReqMessageContext tokenReqMessageContext) {
@@ -362,24 +340,33 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     }
 
     /**
-     * Checks if the token request is an impersonation request by inspecting the provided request parameters.
-     * If all required parameters for impersonation are present, sets the necessary properties in the OAuthTokenReqMessageContext.
+     * Sets the authorized user for an OAuth token request context based on a subject token.
+     * This method extracts a signed JWT from the provided request parameters, validates it,
+     * and resolves the subject (user) contained within the JWT. It then sets the resolved subject
+     * as the authorized user in the OAuth token request context, specifically for impersonation scenarios.
      *
-     * @param requestParams A Map<String, String> containing the request parameters.
-     * @return true if the request is an impersonation request and false otherwise.
+     * @param tokReqMsgCtx   The OAuth token request message context.
+     * @param requestParams  The map containing request parameters, including the subject token.
+     * @param tenantDomain   The tenant domain within which the identity provider and user reside.
+     * @throws IdentityOAuth2Exception if an error occurs while processing the subject token,
+     *                                  resolving the identity provider, or setting the authorized user.
      */
-    private boolean isImpersonationRequest(Map<String, String> requestParams) {
-        // Check if all required parameters are present
-        if (requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN)
-                && requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)
-                && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)
-                && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE)) {
+    private void setAuthorizedUser(OAuthTokenReqMessageContext tokReqMsgCtx,
+                                   Map<String, String> requestParams,
+                                   String tenantDomain) throws IdentityOAuth2Exception {
 
-            return true;
+        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
+
+        JWTClaimsSet claimsSet = getClaimSet(signedJWT);
+        String jwtIssuer = claimsSet.getIssuer();
+        IdentityProvider identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
+        String subject = resolveSubject(claimsSet);
+
+        setAuthorizedUserForImpersonation(tokReqMsgCtx, identityProvider, subject, claimsSet, tenantDomain);
+        if (log.isDebugEnabled()) {
+            log.debug("Subject(sub) found in JWT: " + subject + " and set as the Authorized User.");
         }
-        return false;
     }
-
 
     private void validateLocalUser(OAuthTokenReqMessageContext tokReqMsgCtx, Map<String, String> requestParams)
             throws IdentityOAuth2Exception {

@@ -47,7 +47,7 @@ public class Constants {
 
         public static final String TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
         public static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
-        public  static final String AUDIENCE = "audience";
+        public static final String AUDIENCE = "audience";
         public static final String INVALID_TARGET = "invalid_target";
         public static final String ISSUED_TOKEN_TYPE = "issued_token_type";
         public static final String JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt";
