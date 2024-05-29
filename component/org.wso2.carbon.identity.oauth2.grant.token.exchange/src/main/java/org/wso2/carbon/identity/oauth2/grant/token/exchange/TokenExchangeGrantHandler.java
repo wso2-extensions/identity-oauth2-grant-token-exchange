@@ -244,18 +244,17 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         String[] approvedScopes = ((String) claimsSet.getClaims().get(SCOPE)).split("\\s+");
         if (requestedScopes == null) {
             return approvedScopes;
-        } else {
-            return filterRequestedScopes(requestedScopes, approvedScopes);
         }
+        return filterRequestedScopes(requestedScopes, approvedScopes);
     }
 
     private String[] filterRequestedScopes(String[] requestedScopes, String[] approvedScopes) {
 
         Set<String> approvedScopesSet = new HashSet<>(Arrays.asList(approvedScopes));
         Set<String> commonScopes = new HashSet<>();
-        for (String element : requestedScopes) {
-            if (approvedScopesSet.contains(element)) {
-                commonScopes.add(element);
+        for (String scope : requestedScopes) {
+            if (approvedScopesSet.contains(scope)) {
+                commonScopes.add(scope);
             }
         }
 

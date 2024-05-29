@@ -388,7 +388,6 @@ public class TokenExchangeUtils {
         }
     }
 
-
     /**
      * To set the authorized user to message context.
      *
