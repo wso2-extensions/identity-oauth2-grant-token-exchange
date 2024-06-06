@@ -22,6 +22,7 @@ import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -37,6 +38,9 @@ import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenRespDTO;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants;
+import org.wso2.carbon.identity.oauth2.grant.token.exchange.impersonation.models.ImpersonationNotificationRequestDTO;
+import org.wso2.carbon.identity.oauth2.grant.token.exchange.impersonation.services.ImpersonationNotificationMgtService;
+import org.wso2.carbon.identity.oauth2.grant.token.exchange.impersonation.services.ImpersonationNotificationMgtServiceImpl;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.internal.TokenExchangeServiceComponent;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils;
 import org.wso2.carbon.identity.oauth2.model.RequestParameter;
@@ -136,7 +140,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             validateActorToken(tokReqMsgCtx, requestParams, tenantDomain);
             // Set impersonation flag
             tokReqMsgCtx.setImpersonationRequest(true);
-            setAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
+            setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
             return true;
         }
         validateRequestedTokenType(requestedTokenType);
@@ -226,7 +230,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         String jwtIssuer = claimsSet.getIssuer();
         validateTokenIssuer(jwtIssuer, tenantDomain);
 
-        tokReqMsgCtx.addProperty(IMPERSONATING_ACTOR, impersonator);
+        tokReqMsgCtx.addProperty(IMPERSONATED_SUBJECT, subject);
         tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
     }
 
@@ -240,9 +244,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      */
     private String[] getScopes(JWTClaimsSet claimsSet, OAuthTokenReqMessageContext tokReqMsgCtx) {
 
-        String[] requestedScopes = tokReqMsgCtx.getScope();
-        String[] approvedScopes = ((String) claimsSet.getClaims().get(SCOPE)).split("\\s+");
-        if (requestedScopes == null) {
+        String[] requestedScopes = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope();
+        String[] approvedScopes = ((String) claimsSet.getClaims().get(TokenExchangeConstants.SCOPE)).split("\\s+");
+        if (ArrayUtils.isEmpty(requestedScopes)) {
             return approvedScopes;
         }
         return filterRequestedScopes(requestedScopes, approvedScopes);
@@ -321,7 +325,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         String jwtIssuer = claimsSet.getIssuer();
         validateTokenIssuer(jwtIssuer, tenantDomain);
 
-        tokReqMsgCtx.addProperty(IMPERSONATED_SUBJECT, actorTokenSubject);
+        tokReqMsgCtx.addProperty(IMPERSONATING_ACTOR, actorTokenSubject);
     }
 
     private void validateTokenIssuer(String jwtIssuer, String tenantDomain) throws IdentityOAuth2Exception {
@@ -350,9 +354,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @throws IdentityOAuth2Exception if an error occurs while processing the subject token,
      *                                  resolving the identity provider, or setting the authorized user.
      */
-    private void setAuthorizedUser(OAuthTokenReqMessageContext tokReqMsgCtx,
-                                   Map<String, String> requestParams,
-                                   String tenantDomain) throws IdentityOAuth2Exception {
+    private void setSubjectAsAuthorizedUser(OAuthTokenReqMessageContext tokReqMsgCtx,
+                                            Map<String, String> requestParams,
+                                            String tenantDomain) throws IdentityOAuth2Exception {
 
         SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
 
@@ -437,6 +441,17 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             ClaimsUtil.addUserAttributesToCache(tokenRespDTO, tokReqMsgCtx, userAttributes);
         }
         tokenRespDTO.addParameter(Constants.TokenExchangeConstants.ISSUED_TOKEN_TYPE, requestedTokenType);
+        if (tokReqMsgCtx.isImpersonationRequest()) {
+            ImpersonationNotificationRequestDTO impersonationNotificationRequestDTO
+                    = new ImpersonationNotificationRequestDTO();
+            impersonationNotificationRequestDTO.setTokenReqMessageContext(tokReqMsgCtx);
+            impersonationNotificationRequestDTO.setImpersonator((String) tokReqMsgCtx.getProperty(IMPERSONATING_ACTOR));
+            impersonationNotificationRequestDTO.setSubject((String) tokReqMsgCtx.getProperty(IMPERSONATED_SUBJECT));
+            impersonationNotificationRequestDTO.setTenantDomain(user.getTenantDomain());
+
+            ImpersonationNotificationMgtService notificationMgtService = new ImpersonationNotificationMgtServiceImpl();
+            notificationMgtService.notifyImpersonation(impersonationNotificationRequestDTO);
+        }
         return tokenRespDTO;
     }
 
