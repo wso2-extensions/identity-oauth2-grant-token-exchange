@@ -27,6 +27,8 @@ import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.component.annotations.ReferencePolicy;
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
+import org.wso2.carbon.identity.event.services.IdentityEventService;
+import org.wso2.carbon.identity.oauth2.impersonation.services.ImpersonationConfigMgtService;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.FederatedAssociationManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
 import org.wso2.carbon.user.core.service.RealmService;
@@ -176,5 +178,38 @@ public class TokenExchangeServiceComponent {
         }
 
         return userOperationEventListeners.values();
+    }
+
+    protected void unsetIdentityEventService(IdentityEventService eventService) {
+
+        TokenExchangeComponentServiceHolder.getInstance().setIdentityEventService(null);
+    }
+
+    @Reference(
+            name = "EventMgtService",
+            service = org.wso2.carbon.identity.event.services.IdentityEventService.class,
+            cardinality = ReferenceCardinality.MANDATORY,
+            policy = ReferencePolicy.DYNAMIC,
+            unbind = "unsetIdentityEventService")
+    protected void setIdentityEventService(IdentityEventService eventService) {
+
+        TokenExchangeComponentServiceHolder.getInstance().setIdentityEventService(eventService);
+    }
+
+    protected void unsetImpersonationConfigMgtService(ImpersonationConfigMgtService impersonationConfigMgtService) {
+
+        TokenExchangeComponentServiceHolder.getInstance().setImpersonationConfigMgtService(null);
+    }
+
+    @Reference(
+            name = "ImpersonationConfigMgtService",
+            service = org.wso2.carbon.identity.oauth2.impersonation.services.ImpersonationConfigMgtService.class,
+            cardinality = ReferenceCardinality.MANDATORY,
+            policy = ReferencePolicy.DYNAMIC,
+            unbind = "unsetImpersonationConfigMgtService")
+    protected void setImpersonationConfigMgtService(ImpersonationConfigMgtService impersonationConfigMgtService) {
+
+        TokenExchangeComponentServiceHolder.getInstance()
+                .setImpersonationConfigMgtService(impersonationConfigMgtService);
     }
 }
