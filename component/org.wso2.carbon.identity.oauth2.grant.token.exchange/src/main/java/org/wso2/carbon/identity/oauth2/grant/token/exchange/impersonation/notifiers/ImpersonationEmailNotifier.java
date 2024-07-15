@@ -22,7 +22,6 @@ package org.wso2.carbon.identity.oauth2.grant.token.exchange.impersonation.notif
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
-import org.wso2.carbon.identity.application.common.IdentityApplicationManagementException;
 import org.wso2.carbon.identity.application.common.model.User;
 import org.wso2.carbon.identity.event.IdentityEventConstants;
 import org.wso2.carbon.identity.event.event.Event;
@@ -42,8 +41,6 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Locale;
-
-import static org.wso2.carbon.identity.oauth.OAuthUtil.getUserFromTenant;
 
 /**
  * The ImpersonationEmailNotifier class is responsible for sending email notifications related to impersonation events.
@@ -88,7 +85,7 @@ public class ImpersonationEmailNotifier {
             authenticatedUser.setUserStoreDomain(user.getUserStoreDomain());
             authenticatedUser.setTenantDomain(tenantDomain);
             return authenticatedUser;
-        } catch (UserStoreException | IdentityApplicationManagementException e) {
+        } catch (UserStoreException | IdentityOAuth2Exception e) {
             throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_REQUEST,
                     "Use mapped local subject is mandatory but a local user couldn't be found");
         }

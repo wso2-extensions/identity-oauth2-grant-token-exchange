@@ -385,7 +385,7 @@ public class TokenExchangeUtils {
 
             // Populate IDP groups attribute
             populateIdPGroupsAttribute(tokenReqMsgCtx, identityProvider, claimsSet);
-        } catch (UserStoreException | IdentityApplicationManagementException  e) {
+        } catch (UserStoreException | IdentityOAuth2Exception  e) {
             // Handle user store exception
             throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_REQUEST,
                     "Failed to resolve username from authenticated subject identifier", e);
