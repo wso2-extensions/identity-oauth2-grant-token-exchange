@@ -19,20 +19,22 @@
 
 package org.wso2.carbon.identity.oauth2.grant.token.exchange.impersonation.notifiers;
 
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
+import org.wso2.carbon.identity.application.common.model.User;
 import org.wso2.carbon.identity.event.IdentityEventConstants;
 import org.wso2.carbon.identity.event.event.Event;
+import org.wso2.carbon.identity.oauth.OAuthUtil;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
+import org.wso2.carbon.identity.oauth2.IdentityOAuth2ClientException;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.internal.TokenExchangeComponentServiceHolder;
 import org.wso2.carbon.identity.oauth2.impersonation.exceptions.ImpersonationConfigMgtException;
 import org.wso2.carbon.identity.oauth2.impersonation.models.ImpersonationConfig;
 import org.wso2.carbon.identity.oauth2.impersonation.services.ImpersonationConfigMgtService;
-import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.user.api.UserStoreException;
+import org.wso2.carbon.user.core.service.RealmService;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -58,7 +60,6 @@ public class ImpersonationEmailNotifier {
 
     /**
      * Retrieves the authenticated user details using the user ID and tenant domain.
-     * Resolves the username, user store domain, and other necessary details to create an AuthenticatedUser object.
      *
      * @param userId The ID of the user to be authenticated.
      * @param tenantDomain The domain of the tenant to which the user belongs.
@@ -67,22 +68,27 @@ public class ImpersonationEmailNotifier {
      */
     private AuthenticatedUser getAuthenticatedUser(String userId, String tenantDomain) throws IdentityOAuth2Exception {
 
-        AuthenticatedUser user;
-
-        String username;
         try {
-            username = OAuth2Util.resolveUsernameFromUserId(tenantDomain, userId);
-        } catch (UserStoreException e) {
+            RealmService realmService = TokenExchangeComponentServiceHolder.getInstance().getRealmService();
+
+            int tenantId = realmService.getTenantManager().getTenantId(tenantDomain);
+            User user = OAuthUtil.getUserFromTenant(userId, tenantId);
+            if (user == null) {
+                throw new IdentityOAuth2ClientException(OAuth2ErrorCodes.INVALID_REQUEST,
+                        "Invalid User Id provided for Impersonation request. Unable to find the user for given " +
+                                "user id : " + userId + " tenant Domain : " + tenantDomain);
+            }
+            AuthenticatedUser authenticatedUser = new AuthenticatedUser();
+            authenticatedUser.setUserId(userId);
+            authenticatedUser.setAuthenticatedSubjectIdentifier(userId);
+            authenticatedUser.setUserName(user.getUserName());
+            authenticatedUser.setUserStoreDomain(user.getUserStoreDomain());
+            authenticatedUser.setTenantDomain(tenantDomain);
+            return authenticatedUser;
+        } catch (UserStoreException | IdentityOAuth2Exception e) {
             throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_REQUEST,
                     "Use mapped local subject is mandatory but a local user couldn't be found");
         }
-        String userStore = OAuth2Util.getUserStoreDomainFromUserId(userId);
-
-        user = OAuth2Util.getUserFromUserName(username);
-        user.setUserId(userId);
-        user.setUserStoreDomain(userStore);
-        user.setTenantDomain(tenantDomain);
-        return user;
     }
 
     /**
