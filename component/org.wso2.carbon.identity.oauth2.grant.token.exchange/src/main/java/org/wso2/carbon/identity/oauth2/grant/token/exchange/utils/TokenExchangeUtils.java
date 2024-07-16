@@ -33,7 +33,6 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.json.JSONObject;
 import org.wso2.carbon.CarbonConstants;
-import org.wso2.carbon.core.util.KeyStoreManager;
 import org.wso2.carbon.identity.application.authentication.framework.exception.UserIdNotFoundException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants;
@@ -1214,47 +1213,6 @@ public class TokenExchangeUtils {
 
             CarbonConstants.AUDIT_LOG.info(String.format(Constants.AuditConstants.AUDIT_MESSAGE, initiator, action,
                     target, dataObject, result));
-        }
-    }
-
-    /**
-     * Validate the signature of the subject token.
-     *
-     * @param subjectToken  The subject token to be validated
-     * @param tenantDomain  The domain of the tenant
-     * @return              True if the signature is valid, false otherwise
-     */
-    public static boolean validateTokenSignature(SignedJWT subjectToken, String tenantDomain) {
-
-        try {
-            // Get the tenant ID based on the domain
-            int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
-
-            // Get the public key based on the tenant
-            RSAPublicKey publicKey;
-            KeyStoreManager keyStoreManager = KeyStoreManager.getInstance(tenantId);
-
-            if (!MultitenantConstants.SUPER_TENANT_DOMAIN_NAME.equals(tenantDomain)) {
-                // For non-super tenant, retrieve the public key from the tenant's keystore
-                String fileName = KeystoreUtils.getKeyStoreFileLocation(tenantDomain);
-                publicKey = (RSAPublicKey) keyStoreManager.getKeyStore(fileName)
-                        .getCertificate(tenantDomain).getPublicKey();
-            } else {
-                // For super tenant, use the default public key
-                publicKey = (RSAPublicKey) keyStoreManager.getDefaultPublicKey();
-            }
-
-            // Verify the token signature using the public key
-            JWSVerifier verifier = new RSASSAVerifier(publicKey);
-            return subjectToken.verify(verifier);
-        } catch (JOSEException | ParseException e) {
-            // Handle JOSEException and ParseException
-            log.debug("Error occurred while validating subject token signature.", e);
-            return false;
-        } catch (Exception e) {
-            // Handle other exceptions
-            log.error("Error occurred while validating subject token signature.", e);
-            return false;
         }
     }
 }
