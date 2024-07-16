@@ -65,7 +65,6 @@ import java.util.stream.Collectors;
 
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
-import static org.wso2.carbon.identity.oauth.common.OAuthConstants.SCOPE;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.MAY_ACT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUB;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkExpirationTime;
@@ -77,11 +76,9 @@ import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenEx
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleCustomClaims;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleException;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.parseTokenExchangeConfiguration;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.setAuthorizedUser;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.setAuthorizedUserForImpersonation;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateIssuedAtTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateSignature;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateTokenSignature;
 import static org.wso2.carbon.identity.oauth2.util.OAuth2Util.isJWT;
 
 /**
@@ -200,7 +197,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         JWTClaimsSet claimsSet = getClaimSet(signedJWT);
         if (claimsSet == null) {
             // If claim values are empty, handle the exception
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given JSON Web Token");
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given Subject Token");
         }
 
         // Validate mandatory claims
@@ -210,12 +207,20 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         impersonator = resolveImpersonator(claimsSet);
         if (StringUtils.isBlank(impersonator)) {
             // If claim values are empty, handle the exception
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Subject of actor token and impersonator are different.");
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Impersonator is not found in subject token.");
         }
+        String jwtIssuer = claimsSet.getIssuer();
+        IdentityProvider identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
 
-        // Validate if the subject token is signed by the AS
-        if (!validateTokenSignature(signedJWT, tenantDomain)) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication invalid");
+        try {
+            if (validateSignature(signedJWT, identityProvider, tenantDomain)) {
+                log.debug("Signature/MAC validated successfully for subject token.");
+            } else {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication "
+                        + "invalid for subject token.");
+            }
+        } catch (JOSEException e) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature for subject token ", e);
         }
 
         checkJWTValidity(claimsSet);
@@ -223,11 +228,11 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         // Validate the audience of the subject token
         List<String> audiences = claimsSet.getAudience();
         if (!validateSubjectTokenAudience(audiences, tokReqMsgCtx)) {
-            handleException(TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");
+            handleException(TokenExchangeConstants.INVALID_TARGET,
+                    "Invalid audience values provided for subject token.");
         }
 
         // Validate the issuer of the subject token
-        String jwtIssuer = claimsSet.getIssuer();
         validateTokenIssuer(jwtIssuer, tenantDomain);
 
         tokReqMsgCtx.addProperty(IMPERSONATED_SUBJECT, subject);
@@ -302,7 +307,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         JWTClaimsSet claimsSet = getClaimSet(signedJWT);
         if (claimsSet == null) {
             // If claim values are empty, handle the exception
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given JSON Web Token");
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given Actor Token");
         }
 
         // Validate mandatory claims
@@ -312,17 +317,24 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             // If claim values are empty, handle the exception
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Subject of actor token and subject are different.");
         }
+        String jwtIssuer = claimsSet.getIssuer();
+        IdentityProvider identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
 
-        // Validate if the subject token is signed by the AS
-        if (!validateTokenSignature(signedJWT, tenantDomain)) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication invalid");
+        try {
+            if (validateSignature(signedJWT, identityProvider, tenantDomain)) {
+                log.debug("Signature/MAC validated successfully for actor token.");
+            } else {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication "
+                        + "invalid for actor token.");
+            }
+        } catch (JOSEException e) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature for actor token ", e);
         }
 
         // Check the validity of the JWT
         checkJWTValidity(claimsSet);
 
         // Validate the issuer of the subject token
-        String jwtIssuer = claimsSet.getIssuer();
         validateTokenIssuer(jwtIssuer, tenantDomain);
 
         tokReqMsgCtx.addProperty(IMPERSONATING_ACTOR, actorTokenSubject);

@@ -339,15 +339,14 @@ public class TokenExchangeGrantHandlerTest {
                 .thenReturn(subjectToken);
         tokenExchangeUtils.when(() -> TokenExchangeUtils.getClaimSet(subjectToken))
                 .thenReturn(subjectToken.getJWTClaimsSet());
-        tokenExchangeUtils.when(() -> TokenExchangeUtils.validateTokenSignature(subjectToken,
-                "carbon.super")).thenReturn(true);
-
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.validateSignature(subjectToken, idp, "carbon.super"))
+                .thenReturn(true);
         tokenExchangeUtils.when(() -> TokenExchangeUtils.getSignedJWT(actorToken.serialize()))
                 .thenReturn(actorToken);
         tokenExchangeUtils.when(() -> TokenExchangeUtils.getClaimSet(actorToken))
                 .thenReturn(actorToken.getJWTClaimsSet());
-        tokenExchangeUtils.when(() -> TokenExchangeUtils.validateTokenSignature(actorToken,
-                "carbon.super")).thenReturn(true);
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.validateSignature(actorToken, idp, "carbon.super"))
+                .thenReturn(true);
     }
 
 
