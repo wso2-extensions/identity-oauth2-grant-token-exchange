@@ -51,7 +51,7 @@ public class ImpersonationEmailNotifier {
 
     private static final Log LOG = LogFactory.getLog(ImpersonationEmailNotifier.class);
     private static final String UTC = "UTC";
-    private static final String DATE_FORMAT = "MMMM dd, yyyy 'at' hh:mm a";
+    private static final String DATE_FORMAT = "MMMM dd, yyyy 'at' hh:mm a z";
     private static final String USER_NAME = "user-name";
     private static final String LOGIN_TIME = "login-time";
     private static final String IMPERSONATION_USER_NAME = "impersonator-user-name";
