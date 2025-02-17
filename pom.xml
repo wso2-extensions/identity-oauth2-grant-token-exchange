@@ -249,7 +249,7 @@
         <carbon.identity.account.lock.handler.imp.pkg.version.range>[1.8.13, 2.0.0)
         </carbon.identity.account.lock.handler.imp.pkg.version.range>
         <commons-lang.wso2.version>2.6.0.wso2v1</commons-lang.wso2.version>
-        <nimbusds.osgi.version.range>[9.0.0,11)</nimbusds.osgi.version.range>
+        <nimbusds.osgi.version.range>[9.0.0,10.0.0)</nimbusds.osgi.version.range>
         <net.minidev.json.imp.pkg.version.range>[2.3.0, 3.0.0)</net.minidev.json.imp.pkg.version.range>
         <wso2.json>3.0.0.wso2v1</wso2.json>
         <wso2.json.version.range>[3.0.0.wso2v1, 4.0.0)</wso2.json.version.range>
