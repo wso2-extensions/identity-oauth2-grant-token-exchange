@@ -60,6 +60,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -250,10 +251,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private String[] getScopes(JWTClaimsSet claimsSet, OAuthTokenReqMessageContext tokReqMsgCtx) {
 
         String[] requestedScopes = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope();
-        String[] approvedScopes = new String[0];
-        if (claimsSet.getClaims().get(TokenExchangeConstants.SCOPE) != null) {
-            approvedScopes = ((String) claimsSet.getClaims().get(TokenExchangeConstants.SCOPE)).split("\\s+");
-        }
+        String[] approvedScopes = Optional.ofNullable(claimsSet.getClaims().get(TokenExchangeConstants.SCOPE))
+                .map(Object::toString)
+                .map(scope -> scope.split("\\s+"))
+                .orElse(new String[0]);
         if (ArrayUtils.isEmpty(requestedScopes)) {
             return approvedScopes;
         }
