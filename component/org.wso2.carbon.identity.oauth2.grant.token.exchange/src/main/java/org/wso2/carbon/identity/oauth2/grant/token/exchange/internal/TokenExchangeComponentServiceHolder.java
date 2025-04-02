@@ -19,9 +19,6 @@ package org.wso2.carbon.identity.oauth2.grant.token.exchange.internal;
 
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
-import org.wso2.carbon.identity.event.services.IdentityEventService;
-import org.wso2.carbon.identity.oauth2.grant.token.exchange.impersonation.services.ImpersonationNotificationMgtService;
-import org.wso2.carbon.identity.oauth2.impersonation.services.ImpersonationConfigMgtService;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.FederatedAssociationManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
 import org.wso2.carbon.user.core.service.RealmService;
@@ -36,9 +33,6 @@ public class TokenExchangeComponentServiceHolder {
     private Map<Integer, UserOperationEventListener> userOperationEventListeners;
     private FederatedAssociationManager federatedAssociationManager;
     private ClaimMetadataManagementService claimMetadataManagementService;
-    private ImpersonationNotificationMgtService impersonationNotificationMgtService;
-    private IdentityEventService identityEventService;
-    private ImpersonationConfigMgtService impersonationConfigMgtService;
 
     public static TokenExchangeComponentServiceHolder getInstance() {
         return INSTANCE;
@@ -103,36 +97,5 @@ public class TokenExchangeComponentServiceHolder {
     public void setClaimMetadataManagementService(ClaimMetadataManagementService claimMetadataManagementService) {
 
         this.claimMetadataManagementService = claimMetadataManagementService;
-    }
-
-    public ImpersonationNotificationMgtService getImpersonationNotificationMgtService() {
-
-        return impersonationNotificationMgtService;
-    }
-
-    public void setImpersonationNotificationMgtService(ImpersonationNotificationMgtService
-                                                               impersonationNotificationMgtService) {
-
-        this.impersonationNotificationMgtService = impersonationNotificationMgtService;
-    }
-
-    public IdentityEventService getIdentityEventService() {
-
-        return identityEventService;
-    }
-
-    public void setIdentityEventService(IdentityEventService identityEventService) {
-
-        this.identityEventService = identityEventService;
-    }
-
-    public ImpersonationConfigMgtService getImpersonationConfigMgtService() {
-
-        return impersonationConfigMgtService;
-    }
-
-    public void setImpersonationConfigMgtService(ImpersonationConfigMgtService impersonationConfigMgtService) {
-
-        this.impersonationConfigMgtService = impersonationConfigMgtService;
     }
 }
