@@ -87,7 +87,6 @@ import org.wso2.carbon.user.core.service.RealmService;
 import org.wso2.carbon.user.core.util.UserCoreUtil;
 import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
-import org.wso2.carbon.utils.security.KeystoreUtils;
 
 import static org.wso2.carbon.utils.CarbonUtils.isLegacyAuditLogsDisabled;
 
@@ -362,29 +361,17 @@ public class TokenExchangeUtils {
             throws IdentityOAuth2Exception {
 
         try {
-
-            RealmService realmService = TokenExchangeComponentServiceHolder.getInstance().getRealmService();
-
-            int tenantId = realmService.getTenantManager().getTenantId(tenantDomain);
-            org.wso2.carbon.identity.application.common.model.User user
-                    = OAuthUtil.getUserFromTenant(authenticatedSubjectIdentifier, tenantId);
-            if (user == null) {
-                throw new IdentityOAuth2ClientException(OAuth2ErrorCodes.INVALID_REQUEST,
-                        "Invalid User Id provided for Impersonation request. Unable to find the user for given " +
-                                "user id : " + authenticatedSubjectIdentifier + " tenant Domain : " + tenantDomain);
-            }
-            AuthenticatedUser authenticatedUser = new AuthenticatedUser();
-            authenticatedUser.setUserId(authenticatedSubjectIdentifier);
-            authenticatedUser.setAuthenticatedSubjectIdentifier(authenticatedSubjectIdentifier);
-            authenticatedUser.setUserName(user.getUserName());
-            authenticatedUser.setUserStoreDomain(user.getUserStoreDomain());
-            authenticatedUser.setTenantDomain(tenantDomain);
+            // Get the client ID from the claims set.
+            String clientId = tokenReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
+            // (String userId, AuthenticatedUser impersonator, String clientId)
+            AuthenticatedUser impersonatee = OAuth2Util.getImpersonatingUser(authenticatedSubjectIdentifier,
+                    tenantDomain, clientId);
             // Set the authorized user in the OAuth token request message context
-            tokenReqMsgCtx.setAuthorizedUser(authenticatedUser);
+            tokenReqMsgCtx.setAuthorizedUser(impersonatee);
 
             // Populate IDP groups attribute
             populateIdPGroupsAttribute(tokenReqMsgCtx, identityProvider, claimsSet);
-        } catch (UserStoreException | IdentityOAuth2Exception  e) {
+        } catch (IdentityOAuth2Exception  e) {
             // Handle user store exception
             throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_REQUEST,
                     "Failed to resolve username from authenticated subject identifier", e);
@@ -495,7 +482,6 @@ public class TokenExchangeUtils {
                 }
             }
         }
-
 
         tokenReqMsgCtx.setAuthorizedUser(authenticatedUser);
         populateIdPGroupsAttribute(tokenReqMsgCtx, identityProvider, claimsSet);
