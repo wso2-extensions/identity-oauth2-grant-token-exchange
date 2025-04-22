@@ -844,8 +844,13 @@ public class TokenExchangeUtils {
 
         X509Certificate x509Certificate = null;
         try {
-            x509Certificate =
-                    (X509Certificate) IdentityApplicationManagementUtil.decodeCertificate(idp.getCertificate());
+            if (StringUtils.equals(IdentityApplicationConstants.RESIDENT_IDP_RESERVED_NAME,
+                    idp.getIdentityProviderName())) {
+                x509Certificate = (X509Certificate) OAuth2Util.getCertificate(tenantDomain);
+            } else {
+                x509Certificate =
+                        (X509Certificate) IdentityApplicationManagementUtil.decodeCertificate(idp.getCertificate());
+            }
         } catch (CertificateException e) {
             handleException("Error occurred while decoding public certificate of Identity Provider "
                     + idp.getIdentityProviderName() + " for tenant domain " + tenantDomain, e);
