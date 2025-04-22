@@ -38,9 +38,6 @@ import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenRespDTO;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants;
-import org.wso2.carbon.identity.oauth2.grant.token.exchange.impersonation.models.ImpersonationNotificationRequestDTO;
-import org.wso2.carbon.identity.oauth2.grant.token.exchange.impersonation.services.ImpersonationNotificationMgtService;
-import org.wso2.carbon.identity.oauth2.grant.token.exchange.impersonation.services.ImpersonationNotificationMgtServiceImpl;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.internal.TokenExchangeServiceComponent;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils;
 import org.wso2.carbon.identity.oauth2.model.RequestParameter;
@@ -457,17 +454,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             ClaimsUtil.addUserAttributesToCache(tokenRespDTO, tokReqMsgCtx, userAttributes);
         }
         tokenRespDTO.addParameter(Constants.TokenExchangeConstants.ISSUED_TOKEN_TYPE, requestedTokenType);
-        if (tokReqMsgCtx.isImpersonationRequest()) {
-            ImpersonationNotificationRequestDTO impersonationNotificationRequestDTO
-                    = new ImpersonationNotificationRequestDTO();
-            impersonationNotificationRequestDTO.setTokenReqMessageContext(tokReqMsgCtx);
-            impersonationNotificationRequestDTO.setImpersonator((String) tokReqMsgCtx.getProperty(IMPERSONATING_ACTOR));
-            impersonationNotificationRequestDTO.setSubject((String) tokReqMsgCtx.getProperty(IMPERSONATED_SUBJECT));
-            impersonationNotificationRequestDTO.setTenantDomain(user.getTenantDomain());
-
-            ImpersonationNotificationMgtService notificationMgtService = new ImpersonationNotificationMgtServiceImpl();
-            notificationMgtService.notifyImpersonation(impersonationNotificationRequestDTO);
-        }
         return tokenRespDTO;
     }
 
