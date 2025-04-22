@@ -363,8 +363,7 @@ public class TokenExchangeUtils {
         try {
             // Get the client ID from the claims set.
             String clientId = tokenReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
-            // (String userId, AuthenticatedUser impersonator, String clientId)
-            AuthenticatedUser impersonatee = OAuth2Util.getImpersonatingUser(authenticatedSubjectIdentifier,
+            AuthenticatedUser impersonatee = OAuth2Util.getAuthenticatedUser(authenticatedSubjectIdentifier,
                     tenantDomain, clientId);
             // Set the authorized user in the OAuth token request message context
             tokenReqMsgCtx.setAuthorizedUser(impersonatee);
