@@ -31,6 +31,7 @@ import org.wso2.carbon.identity.application.authentication.framework.model.Authe
 import org.wso2.carbon.identity.application.common.model.ClaimMapping;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.central.log.mgt.utils.LoggerUtils;
+import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.event.IdentityEventException;
 import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLockException;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
@@ -397,6 +398,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         AbstractUserStoreManager userStoreManager = TokenExchangeUtils.getUserStoreManager(tokReqMsgCtx);
         for (UserOperationEventListener listener : TokenExchangeServiceComponent.getUserOperationEventListeners()) {
             try {
+                Map<String, Object> threadLocalProps = new HashMap<>();
+                // TODO: Move GrantType to IdentityCoreConstants.
+                threadLocalProps.put("GrantType", TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+                IdentityUtil.threadLocalProperties.set(threadLocalProps);
                 listener.doPostAuthenticate(tokReqMsgCtx.getAuthorizedUser().getUserName(), false,
                         userStoreManager);
             } catch (UserStoreException e) {
@@ -434,6 +439,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 }
 
                 handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
+            } finally {
+                IdentityUtil.threadLocalProperties.get().remove("GrantType");
             }
         }
     }
