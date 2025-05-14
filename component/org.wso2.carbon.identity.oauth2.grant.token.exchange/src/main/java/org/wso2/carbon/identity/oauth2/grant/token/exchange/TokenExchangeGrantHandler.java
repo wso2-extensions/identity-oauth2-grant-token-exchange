@@ -396,14 +396,21 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         AbstractUserStoreManager userStoreManager = TokenExchangeUtils.getUserStoreManager(tokReqMsgCtx);
+        String userName;
+        try {
+            userName = userStoreManager.getUserNameFromUserID(userId);
+        } catch (UserStoreException e) {
+            handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
+            return;
+        }
+
         for (UserOperationEventListener listener : TokenExchangeServiceComponent.getUserOperationEventListeners()) {
             try {
                 Map<String, Object> threadLocalProps = new HashMap<>();
                 // TODO: Move GrantType to IdentityCoreConstants.
                 threadLocalProps.put("GrantType", TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
                 IdentityUtil.threadLocalProperties.set(threadLocalProps);
-                listener.doPostAuthenticate(tokReqMsgCtx.getAuthorizedUser().getUserName(), false,
-                        userStoreManager);
+                listener.doPostAuthenticate(userName, false, userStoreManager);
             } catch (UserStoreException e) {
                 if (e.getCause() instanceof AccountLockException) {
                     String errorMessage = "Local user authorization failed: linked local account with id " + userId +
