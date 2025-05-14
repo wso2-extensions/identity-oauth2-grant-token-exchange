@@ -31,6 +31,7 @@ import org.wso2.carbon.identity.application.authentication.framework.model.Authe
 import org.wso2.carbon.identity.application.common.model.ClaimMapping;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.central.log.mgt.utils.LoggerUtils;
+import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.event.IdentityEventException;
 import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLockException;
@@ -54,6 +55,7 @@ import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -406,10 +408,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         for (UserOperationEventListener listener : TokenExchangeServiceComponent.getUserOperationEventListeners()) {
             try {
-                Map<String, Object> threadLocalProps = new HashMap<>();
-                // TODO: Move GrantType to IdentityCoreConstants.
-                threadLocalProps.put("GrantType", TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
-                IdentityUtil.threadLocalProperties.set(threadLocalProps);
+                IdentityUtil.threadLocalProperties.set(Collections.singletonMap(
+                        IdentityCoreConstants.GRANT_TYPE, TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE));
                 listener.doPostAuthenticate(userName, false, userStoreManager);
             } catch (UserStoreException e) {
                 if (e.getCause() instanceof AccountLockException) {
@@ -447,7 +447,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
                 handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
             } finally {
-                IdentityUtil.threadLocalProperties.get().remove("GrantType");
+                IdentityUtil.threadLocalProperties.get().remove(IdentityCoreConstants.GRANT_TYPE);
             }
         }
     }
