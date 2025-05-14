@@ -408,8 +408,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         for (UserOperationEventListener listener : TokenExchangeServiceComponent.getUserOperationEventListeners()) {
             try {
-                IdentityUtil.threadLocalProperties.get().put(IdentityCoreConstants.GRANT_TYPE,
-                        TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+                IdentityUtil.threadLocalProperties.get().put(IdentityCoreConstants.SKIP_LOCAL_USER_CLAIM_UPDATE, true);
                 listener.doPostAuthenticate(userName, false, userStoreManager);
             } catch (UserStoreException e) {
                 if (e.getCause() instanceof AccountLockException) {
@@ -447,7 +446,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
                 handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
             } finally {
-                IdentityUtil.threadLocalProperties.get().remove(IdentityCoreConstants.GRANT_TYPE);
+                IdentityUtil.threadLocalProperties.get().remove(IdentityCoreConstants.SKIP_LOCAL_USER_CLAIM_UPDATE);
             }
         }
     }
