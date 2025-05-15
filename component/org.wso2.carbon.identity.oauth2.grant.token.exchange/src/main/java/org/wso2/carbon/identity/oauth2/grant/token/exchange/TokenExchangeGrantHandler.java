@@ -1,7 +1,7 @@
 /*
- * Copyright (c) 2021, WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
+ * Copyright (c) 2021-2025, WSO2 LLC. (http://www.wso2.com).
  *
- * WSO2 Inc. licenses this file to you under the Apache License,
+ * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.
  * You may obtain a copy of the License at
@@ -13,7 +13,7 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
  * KIND, either express or implied.  See the License for the
  * specific language governing permissions and limitations
- * under the License
+ * under the License.
  */
 
 package org.wso2.carbon.identity.oauth2.grant.token.exchange;
@@ -31,6 +31,8 @@ import org.wso2.carbon.identity.application.authentication.framework.model.Authe
 import org.wso2.carbon.identity.application.common.model.ClaimMapping;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.central.log.mgt.utils.LoggerUtils;
+import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
+import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.event.IdentityEventException;
 import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLockException;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
@@ -53,6 +55,7 @@ import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -395,10 +398,18 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         AbstractUserStoreManager userStoreManager = TokenExchangeUtils.getUserStoreManager(tokReqMsgCtx);
+        String userName;
+        try {
+            userName = userStoreManager.getUserNameFromUserID(userId);
+        } catch (UserStoreException e) {
+            handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
+            return;
+        }
+
         for (UserOperationEventListener listener : TokenExchangeServiceComponent.getUserOperationEventListeners()) {
             try {
-                listener.doPostAuthenticate(tokReqMsgCtx.getAuthorizedUser().getUserName(), false,
-                        userStoreManager);
+                IdentityUtil.threadLocalProperties.get().put(IdentityCoreConstants.SKIP_LOCAL_USER_CLAIM_UPDATE, true);
+                listener.doPostAuthenticate(userName, false, userStoreManager);
             } catch (UserStoreException e) {
                 if (e.getCause() instanceof AccountLockException) {
                     String errorMessage = "Local user authorization failed: linked local account with id " + userId +
@@ -434,6 +445,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 }
 
                 handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
+            } finally {
+                IdentityUtil.threadLocalProperties.get().remove(IdentityCoreConstants.SKIP_LOCAL_USER_CLAIM_UPDATE);
             }
         }
     }
