@@ -378,6 +378,42 @@ public class TokenExchangeUtils {
     }
 
     /**
+     * To set the authorized user for Impersonation to message context.
+     *
+     * @param tokenReqMsgCtx                 Token request message context.
+     * @param identityProvider               Identity Provider
+     * @param authenticatedSubjectIdentifier Authenticated Subject Identifier.
+     * @param claimsSet                      Claim Set in the subject token.
+     * @param tenantDomain                   Tenant Domain.
+     * @param authorizedOrgId                Authorized Organization ID.
+     * @param userResideOrgId                User's Resident Organization ID.
+     * @throws IdentityOAuth2Exception Identity OAuth2 Exception.
+     */
+    public static void setAuthorizedUserForImpersonation(OAuthTokenReqMessageContext tokenReqMsgCtx,
+                                                         IdentityProvider identityProvider,
+                                                         String authenticatedSubjectIdentifier,
+                                                         JWTClaimsSet claimsSet, String tenantDomain,
+                                                         String authorizedOrgId, String userResideOrgId)
+            throws IdentityOAuth2Exception {
+
+        try {
+            // Get the client ID from the claims set.
+            String clientId = tokenReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
+            AuthenticatedUser impersonatee = OAuth2Util.getAuthenticatedUser(authenticatedSubjectIdentifier,
+                    tenantDomain, authorizedOrgId, userResideOrgId, clientId);
+            // Set the authorized user in the OAuth token request message context
+            tokenReqMsgCtx.setAuthorizedUser(impersonatee);
+
+            // Populate IDP groups attribute
+            populateIdPGroupsAttribute(tokenReqMsgCtx, identityProvider, claimsSet);
+        } catch (IdentityOAuth2Exception  e) {
+            // Handle user store exception
+            throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Failed to resolve username from authenticated subject identifier", e);
+        }
+    }
+
+    /**
      * To set the authorized user to message context.
      *
      * @param tokenReqMsgCtx                 Token request message context.
