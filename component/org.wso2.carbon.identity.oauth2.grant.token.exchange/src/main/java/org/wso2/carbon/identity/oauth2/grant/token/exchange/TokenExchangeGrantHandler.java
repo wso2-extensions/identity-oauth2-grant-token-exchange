@@ -66,8 +66,10 @@ import java.util.stream.Collectors;
 
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ORG_ID;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.MAY_ACT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUB;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.USER_ORG;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkExpirationTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkNotBeforeTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getClaimSet;
@@ -378,10 +380,18 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         JWTClaimsSet claimsSet = getClaimSet(signedJWT);
         String jwtIssuer = claimsSet.getIssuer();
-        IdentityProvider identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
         String subject = resolveSubject(claimsSet);
+        String authorizedOrgId = resolveUserAccessingOrgId(claimsSet);
+        String userResideOrgId = resolveUserResideOrgId(claimsSet);
+        IdentityProvider identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
+        if (authorizedOrgId != null && userResideOrgId != null) {
+            setAuthorizedUserForImpersonation(
+                    tokReqMsgCtx, identityProvider, subject, claimsSet, tenantDomain, authorizedOrgId, userResideOrgId);
+        } else {
+            setAuthorizedUserForImpersonation(
+                    tokReqMsgCtx, identityProvider, subject, claimsSet, tenantDomain);
+        }
 
-        setAuthorizedUserForImpersonation(tokReqMsgCtx, identityProvider, subject, claimsSet, tenantDomain);
         if (log.isDebugEnabled()) {
             log.debug("Subject(sub) found in JWT: " + subject + " and set as the Authorized User.");
         }
@@ -570,6 +580,32 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     protected String resolveSubject(JWTClaimsSet claimsSet) {
 
         return claimsSet.getSubject();
+    }
+
+    /**
+     * Resolve subject user resident organization value.
+     * @param claimsSet all the JWT claims.
+     *
+     * @return The organization of the subject user resides.
+     */
+    private String resolveUserResideOrgId(JWTClaimsSet claimsSet) {
+
+        return Optional.ofNullable(claimsSet.getClaim(USER_ORG))
+                .map(Object::toString)
+                .orElse(null);
+    }
+
+    /**
+     * Resolve subject user accessing organization value.
+     * @param claimsSet all the JWT claims.
+     *
+     * @return The organization of the subject user accessing.
+     */
+    private String resolveUserAccessingOrgId(JWTClaimsSet claimsSet) {
+
+        return Optional.ofNullable(claimsSet.getClaim(ORG_ID))
+                .map(Object::toString)
+                .orElse(null);
     }
 
     /**

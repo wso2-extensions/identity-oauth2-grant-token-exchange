@@ -57,6 +57,8 @@ public class Constants {
         public static final String ACTOR_TOKEN_TYPE = "actor_token_type";
         public static final String REQUESTED_TOKEN_TYPE = "requested_token_type";
         public static final String MAY_ACT = "may_act";
+        public static final String USER_ORG = "user_org";
+        public static final String ORG_ID = "org_id";
         public static final String SUB = "sub";
         public static final String SCOPE = "scope";
 
