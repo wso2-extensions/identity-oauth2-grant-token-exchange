@@ -476,6 +476,8 @@ public class TokenExchangeUtils {
                 try {
                     authenticatedUser.setUserId(accessTokenDO.getAuthzUser().getUserId());
                     authenticatedUser.setFederatedIdPName(null);
+                    authenticatedUser.setUserName(accessTokenDO.getAuthzUser().getUserName());
+                    authenticatedUser.setUserStoreDomain(accessTokenDO.getAuthzUser().getUserStoreDomain());
                 } catch (UserIdNotFoundException e) {
                     handleException("Error while getting user id from the access token data object.", e);
                 }
