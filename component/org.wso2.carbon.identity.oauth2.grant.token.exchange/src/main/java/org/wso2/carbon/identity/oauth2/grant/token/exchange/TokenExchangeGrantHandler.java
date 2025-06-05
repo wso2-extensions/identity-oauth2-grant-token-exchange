@@ -588,12 +588,11 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      *
      * @return The organization of the subject user resides.
      */
-    protected String resolveUserResideOrgId(JWTClaimsSet claimsSet) {
+    private String resolveUserResideOrgId(JWTClaimsSet claimsSet) {
 
-        if (claimsSet.getClaim(USER_ORG) != null) {
-            return claimsSet.getClaim(USER_ORG).toString();
-        }
-        return null;
+        return Optional.ofNullable(claimsSet.getClaim(USER_ORG))
+                .map(Object::toString)
+                .orElse(null);
     }
 
     /**
@@ -602,12 +601,11 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      *
      * @return The organization of the subject user accessing.
      */
-    protected String resolveUserAccessingOrgId(JWTClaimsSet claimsSet) {
+    private String resolveUserAccessingOrgId(JWTClaimsSet claimsSet) {
 
-        if (claimsSet.getClaim(ORG_ID) != null) {
-            return claimsSet.getClaim(ORG_ID).toString();
-        }
-        return null;
+        return Optional.ofNullable(claimsSet.getClaim(ORG_ID))
+                .map(Object::toString)
+                .orElse(null);
     }
 
     /**
