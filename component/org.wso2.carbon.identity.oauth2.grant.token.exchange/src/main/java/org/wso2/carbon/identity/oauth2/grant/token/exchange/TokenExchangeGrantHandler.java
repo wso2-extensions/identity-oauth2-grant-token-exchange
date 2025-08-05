@@ -54,6 +54,7 @@ import org.wso2.carbon.user.core.listener.UserOperationEventListener;
 import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -687,6 +688,12 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             audienceFound = validateAudience(audiences, identityProvider, requestedAudience, params, tenantDomain);
             if (!audienceFound) {
                 handleException(Constants.TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");;
+            }
+            if (requestedAudience != null && !requestedAudience.isEmpty()) {
+                List<String> audienceList = Arrays.stream(requestedAudience.split(","))
+                        .map(String::trim)
+                        .collect(Collectors.toList());
+                tokReqMsgCtx.setAudiences(audienceList);
             }
 
             boolean customClaimsValidated = validateCustomClaims(claimsSet.getClaims(), identityProvider, params);
