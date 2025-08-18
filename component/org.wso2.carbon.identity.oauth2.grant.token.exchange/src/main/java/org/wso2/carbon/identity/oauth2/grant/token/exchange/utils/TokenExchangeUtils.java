@@ -1180,7 +1180,6 @@ public class TokenExchangeUtils {
 
         RealmService realmService = TokenExchangeComponentServiceHolder.getInstance().getRealmService();
         String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
-        AbstractUserStoreManager userStoreManager = null;
 
         if (StringUtils.isEmpty(tenantDomain)) {
             tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
@@ -1189,16 +1188,11 @@ public class TokenExchangeUtils {
 
         try {
             UserRealm realm = (UserRealm) realmService.getTenantUserRealm(tenantId);
-
-            if (realm.getUserStoreManager().getSecondaryUserStoreManager() != null) {
-                userStoreManager = (AbstractUserStoreManager) realm.getUserStoreManager().getSecondaryUserStoreManager();
-            } else {
-                userStoreManager = (AbstractUserStoreManager) realm.getUserStoreManager();
-            }
+            return (AbstractUserStoreManager) realm.getUserStoreManager();
         } catch (UserStoreException e) {
             handleException("Error while getting user store manager: " + e.getMessage(), e);
         }
-        return userStoreManager;
+        return null;
     }
 
     /**
