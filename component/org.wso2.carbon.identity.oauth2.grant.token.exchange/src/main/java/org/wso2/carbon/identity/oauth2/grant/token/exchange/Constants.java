@@ -43,6 +43,9 @@ public class Constants {
 
     public static final String OAUTH_APP_DO_PROPERTY = "OAuthAppDO";
 
+    public static final String INCLUDE_PRIMARY_WHEN_SECONDARY_PRESENT_IN_TOKEN_EXCHANGE_IMPLICIT_ASSOCIATION =
+            "TokenExchange.ImplicitAssociation.IncludePrimaryWhenSecondaryPresent";
+
     public static class TokenExchangeConstants {
 
         public static final String TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";

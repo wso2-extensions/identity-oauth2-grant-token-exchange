@@ -1190,8 +1190,10 @@ public class TokenExchangeUtils {
         try {
             UserRealm realm = (UserRealm) realmService.getTenantUserRealm(tenantId);
 
-            if (realm.getUserStoreManager().getSecondaryUserStoreManager() != null) {
-                userStoreManager = (AbstractUserStoreManager) realm.getUserStoreManager().getSecondaryUserStoreManager();
+            if (realm.getUserStoreManager().getSecondaryUserStoreManager() != null &&
+                    !shouldIncludePrimaryWhenSecondaryPresent()) {
+                userStoreManager =
+                        (AbstractUserStoreManager) realm.getUserStoreManager().getSecondaryUserStoreManager();
             } else {
                 userStoreManager = (AbstractUserStoreManager) realm.getUserStoreManager();
             }
@@ -1199,6 +1201,12 @@ public class TokenExchangeUtils {
             handleException("Error while getting user store manager: " + e.getMessage(), e);
         }
         return userStoreManager;
+    }
+
+    private static boolean shouldIncludePrimaryWhenSecondaryPresent() {
+
+        return Boolean.parseBoolean(IdentityUtil.getProperty(
+                Constants.INCLUDE_PRIMARY_WHEN_SECONDARY_PRESENT_IN_TOKEN_EXCHANGE_IMPLICIT_ASSOCIATION));
     }
 
     /**
