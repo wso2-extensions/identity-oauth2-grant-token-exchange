@@ -150,6 +150,7 @@ public class TokenExchangeUtils {
 
         JWTClaimsSet claimsSet = null;
         try {
+            IdentityUtil.validateJWTDepth(signedJWT.serialize());
             claimsSet = signedJWT.getJWTClaimsSet();
             if (claimsSet == null) {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given JSON Web Token");
