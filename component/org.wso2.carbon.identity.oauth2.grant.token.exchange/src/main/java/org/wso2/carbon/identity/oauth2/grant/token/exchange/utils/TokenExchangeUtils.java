@@ -752,9 +752,11 @@ public class TokenExchangeUtils {
 
         long expirationTimeInMillis = expirationTime.getTime();
         if ((currentTimeInMillis + timeStampSkewMillis) > expirationTimeInMillis) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "JSON Web Token is expired." + ", Expiration Time(ms) "
+            String errorMessage = "JSON Web Token is expired." + ", Expiration Time(ms) "
                     + ":" + " " + expirationTimeInMillis + ", TimeStamp Skew : " + timeStampSkewMillis + ", Current "
-                    + "Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
+                    + "Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated";
+            log.debug(errorMessage);
+            throw new IdentityOAuth2Exception(OAuth2ErrorCodes.INVALID_REQUEST, errorMessage);
         }
         log.debug("Expiration Time(exp) of JWT was validated successfully.");
         return true;

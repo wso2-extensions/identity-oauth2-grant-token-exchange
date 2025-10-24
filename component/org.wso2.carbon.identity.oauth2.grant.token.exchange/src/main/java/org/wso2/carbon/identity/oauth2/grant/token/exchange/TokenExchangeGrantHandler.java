@@ -231,8 +231,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         // Validate the audience of the subject token
         List<String> audiences = claimsSet.getAudience();
         if (!validateSubjectTokenAudience(audiences, tokReqMsgCtx)) {
-            handleException(TokenExchangeConstants.INVALID_TARGET,
-                    "Invalid audience values provided for subject token.");
+            String errorMessage = "Invalid audience values provided for subject token.";
+            log.debug(errorMessage);
+            throw new IdentityOAuth2Exception(TokenExchangeConstants.INVALID_TARGET, errorMessage);
         }
 
         // Validate the issuer of the subject token
@@ -686,7 +687,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             RequestParameter[] params = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getRequestParameters();
             audienceFound = validateAudience(audiences, identityProvider, requestedAudience, params, tenantDomain);
             if (!audienceFound) {
-                handleException(Constants.TokenExchangeConstants.INVALID_TARGET, "Invalid audience values provided");;
+                String errorMessage = "Invalid audience values provided";
+                log.debug(errorMessage);
+                throw new IdentityOAuth2Exception(Constants.TokenExchangeConstants.INVALID_TARGET, errorMessage);
             }
 
             boolean customClaimsValidated = validateCustomClaims(claimsSet.getClaims(), identityProvider, params);
