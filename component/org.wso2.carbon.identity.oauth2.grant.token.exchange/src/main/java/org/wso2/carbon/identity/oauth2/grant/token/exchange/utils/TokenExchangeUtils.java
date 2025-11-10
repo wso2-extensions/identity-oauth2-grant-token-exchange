@@ -268,22 +268,6 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Method to handle client validation exceptions.
-     * Logs at DEBUG level as these are expected client validation failures.
-     *
-     * @param code         Error code
-     * @param errorMessage Error description
-     * @param e            Throwable Object
-     * @throws IdentityOAuth2ClientException
-     */
-    public static void handleClientException(String code, String errorMessage, Throwable e)
-            throws IdentityOAuth2ClientException {
-
-        log.debug(errorMessage, e);
-        throw new IdentityOAuth2ClientException(code, errorMessage, e);
-    }
-
-    /**
      * Get Identity Provider alias.
      *
      * @param idp          Identity provider
