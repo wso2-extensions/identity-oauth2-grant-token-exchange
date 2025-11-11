@@ -254,6 +254,20 @@ public class TokenExchangeUtils {
     }
 
     /**
+     * Method to handle client validation exceptions.
+     * Logs at DEBUG level as these are expected client validation failures.
+     *
+     * @param code         Error Code
+     * @param errorMessage Error Description
+     * @throws IdentityOAuth2ClientException
+     */
+    public static void handleClientException(String code, String errorMessage) throws IdentityOAuth2ClientException {
+
+        log.debug(errorMessage);
+        throw new IdentityOAuth2ClientException(code, errorMessage);
+    }
+
+    /**
      * Get Identity Provider alias.
      *
      * @param idp          Identity provider
@@ -752,9 +766,10 @@ public class TokenExchangeUtils {
 
         long expirationTimeInMillis = expirationTime.getTime();
         if ((currentTimeInMillis + timeStampSkewMillis) > expirationTimeInMillis) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "JSON Web Token is expired." + ", Expiration Time(ms) "
+            String errorMessage = "JSON Web Token is expired." + ", Expiration Time(ms) "
                     + ":" + " " + expirationTimeInMillis + ", TimeStamp Skew : " + timeStampSkewMillis + ", Current "
-                    + "Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated");
+                    + "Time : " + currentTimeInMillis + ". JWT Rejected and validation terminated";
+            handleClientException(OAuth2ErrorCodes.INVALID_REQUEST, errorMessage);
         }
         log.debug("Expiration Time(exp) of JWT was validated successfully.");
         return true;
