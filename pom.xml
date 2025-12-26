@@ -26,7 +26,7 @@
     </parent>
     <groupId>org.wso2.carbon.extension.identity.oauth2.grantType.token.exchange</groupId>
     <artifactId>identity-inbound-oauth2-grant-token-exchange</artifactId>
-    <version>1.1.19-SNAPSHOT</version>
+    <version>1.1.22-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>WSO2 Carbon Extension - Token Exchange Grant Type Pom</name>
     <url>http://wso2.org</url>
@@ -230,7 +230,7 @@
         <carbon.p2.plugin.version>1.5.3</carbon.p2.plugin.version>
         <carbon.identity.oauth.package.import.version.range>[6.0.0, 8.0.0)</carbon.identity.oauth.package.import.version.range>
         <carbon.identity.oauth.version>7.0.305</carbon.identity.oauth.version>
-        <carbon.identity.framework.version>7.8.146</carbon.identity.framework.version>
+        <carbon.identity.framework.version>7.8.506</carbon.identity.framework.version>
         <commons-lang.wso2.osgi.version.range>[2.6.0,3.0.0)</commons-lang.wso2.osgi.version.range>
         <commons-logging.osgi.version.range>[1.2,2.0)</commons-logging.osgi.version.range>
         <equinox.osgi.services.version>3.5.100.v20160504-1419</equinox.osgi.services.version>
