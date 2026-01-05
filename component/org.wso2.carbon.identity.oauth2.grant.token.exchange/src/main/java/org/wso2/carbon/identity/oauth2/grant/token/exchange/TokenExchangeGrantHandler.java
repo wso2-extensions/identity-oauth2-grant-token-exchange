@@ -239,6 +239,11 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         validateTokenIssuer(jwtIssuer, tenantDomain);
 
         tokReqMsgCtx.addProperty(IMPERSONATED_SUBJECT, subject);
+        if (claimsSet.getClaim("act") != null) {
+            tokReqMsgCtx.addProperty("act", claimsSet.getClaim("act"));
+        } else if (claimsSet.getClaim(MAY_ACT) != null) {
+            tokReqMsgCtx.addProperty(MAY_ACT, claimsSet.getClaim(MAY_ACT));
+        }
         tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
     }
 
@@ -278,14 +283,49 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
 
     private String resolveImpersonator(JWTClaimsSet claimsSet) {
-
-        if (claimsSet.getClaim(MAY_ACT) != null) {
-
-            Map<String, String>  mayActClaimSet = (Map) claimsSet.getClaim(MAY_ACT);
-            return mayActClaimSet.get(SUB);
+        Object actClaim = claimsSet.getClaim("act");
+        if (actClaim != null) {
+            try {
+                if (actClaim instanceof Map) {
+                    Map<?, ?> actClaimSet = (Map<?, ?>) actClaim;
+                    Object subValue = actClaimSet.get(SUB);
+                    if (subValue != null) {
+                        return subValue.toString();
+                    }
+                } else {
+                    java.lang.reflect.Method getMethod = actClaim.getClass().getMethod("get", Object.class);
+                    Object subValue = getMethod.invoke(actClaim, SUB);
+                    if (subValue != null) {
+                        return subValue.toString();
+                    }
+                }
+            } catch (Exception e) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Error while extracting subject from 'act' claim", e);
+                }
+            }
         }
+
+        Object mayActClaim = claimsSet.getClaim(MAY_ACT);
+        if (mayActClaim != null) {
+            try {
+                if (mayActClaim instanceof Map) {
+                    Map<?, ?> mayActClaimSet = (Map<?, ?>) mayActClaim;
+                    Object subValue = mayActClaimSet.get(SUB);
+                    if (subValue != null) {
+                        return subValue.toString();
+                    }
+                }
+            } catch (Exception e) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Error while extracting subject from 'may_act' claim", e);
+                }
+            }
+        }
+
         return null;
     }
+
 
     /**
      * Validates the subject token provided in the token exchange request.
