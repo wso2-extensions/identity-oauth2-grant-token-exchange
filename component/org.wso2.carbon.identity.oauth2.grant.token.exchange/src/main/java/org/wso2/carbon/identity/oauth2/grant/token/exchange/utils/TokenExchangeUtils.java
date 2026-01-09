@@ -61,6 +61,7 @@ import java.security.cert.CertificateNotYetValidException;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPublicKey;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
@@ -491,7 +492,7 @@ public class TokenExchangeUtils {
             }
             if (!isRegisteredClaim) {
                 Object value = entry.getValue();
-                if (value instanceof JSONArray) {
+                if (value instanceof JSONArray || value instanceof ArrayList<?>) {
                     String multiValueSeparator = FrameworkUtils.getMultiAttributeSeparator();
                     String multiValuesWithSeparator = StringUtils.join((Collection) value, multiValueSeparator);
                     customClaimMap.put(entry.getKey(), multiValuesWithSeparator);
