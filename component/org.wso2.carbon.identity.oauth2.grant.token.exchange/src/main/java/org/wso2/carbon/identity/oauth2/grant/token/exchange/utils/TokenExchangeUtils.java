@@ -701,6 +701,13 @@ public class TokenExchangeUtils {
             }
 
             Object idPGroupsObj = claimsSet.getClaim(remoteClaimURIOfAppRoleClaim);
+            if (idPGroupsObj == null){
+                if (log.isDebugEnabled()) {
+                    log.debug("Claim " + remoteClaimURIOfAppRoleClaim + " not found in subject token.");
+                }
+                return;
+            }
+
             String idPGroups = null;
 
             if (idPGroupsObj instanceof JSONArray) {
