@@ -250,11 +250,11 @@
         <carbon.identity.account.lock.handler.imp.pkg.version.range>[1.8.13, 2.0.0)
         </carbon.identity.account.lock.handler.imp.pkg.version.range>
         <commons-lang.wso2.version>2.6.0.wso2v1</commons-lang.wso2.version>
-        <nimbusds.osgi.version.range>[7.3.0,8.0.0)</nimbusds.osgi.version.range>
+        <nimbusds.osgi.version.range>[10.0.0,11.0.0)</nimbusds.osgi.version.range>
         <net.minidev.json.imp.pkg.version.range>[2.3.0, 3.0.0)</net.minidev.json.imp.pkg.version.range>
         <wso2.json>3.0.0.wso2v1</wso2.json>
         <wso2.json.version.range>[3.0.0.wso2v1, 4.0.0)</wso2.json.version.range>
-        <nimbusds.version>7.3.0.wso2v1</nimbusds.version>
+        <nimbusds.version>10.3.0.wso2v1</nimbusds.version>
         <axiom.version>1.2.11-wso2v6</axiom.version>
         <javax.servlet-api.version>3.0-alpha-1</javax.servlet-api.version>
         <commons-codec.version>1.4.0.wso2v1</commons-codec.version>
