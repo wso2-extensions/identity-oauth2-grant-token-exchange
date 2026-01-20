@@ -191,7 +191,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @param subjectClaimsSet The claims set from the subject token.
      * @throws IdentityOAuth2Exception If there's an error during validation.
      */
-
     private void validateDownscopingRequest(OAuthTokenReqMessageContext tokReqMsgCtx,
                                             Map<String, String> requestParams,
                                             String tenantDomain,
