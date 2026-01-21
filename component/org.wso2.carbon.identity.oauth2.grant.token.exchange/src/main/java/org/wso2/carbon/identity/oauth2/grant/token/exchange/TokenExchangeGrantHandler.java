@@ -180,6 +180,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
         return true;
     }
+
     /**
      * Validates a downscoping request where both subject_token and actor_token are access tokens.
      * In this scenario, we validate both tokens and use the intersection of their scopes.
