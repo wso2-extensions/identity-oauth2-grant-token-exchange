@@ -98,6 +98,7 @@ import java.security.cert.CertificateNotYetValidException;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPublicKey;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
@@ -710,8 +711,8 @@ public class TokenExchangeUtils {
 
             String idPGroups = null;
 
-            if (idPGroupsObj instanceof JSONArray) {
-                idPGroups = StringUtils.join(((JSONArray) idPGroupsObj).toArray(),
+            if (idPGroupsObj instanceof ArrayList) {
+                idPGroups = StringUtils.join(((ArrayList) idPGroupsObj).toArray(),
                         FrameworkUtils.getMultiAttributeSeparator());
             } else {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Invalid " + remoteClaimURIOfAppRoleClaim +
@@ -981,7 +982,7 @@ public class TokenExchangeUtils {
             }
             if (!isRegisteredClaim) {
                 Object value = entry.getValue();
-                if (value instanceof JSONArray) {
+                if (value instanceof ArrayList) {
                     String multiValueSeparator = FrameworkUtils.getMultiAttributeSeparator();
                     String multiValuesWithSeparator = StringUtils.join((Collection) value, multiValueSeparator);
                     customClaimMap.put(entry.getKey(), multiValuesWithSeparator);
