@@ -24,7 +24,6 @@ import com.nimbusds.jose.JWSVerifier;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
-import net.minidev.json.JSONArray;
 import org.apache.axiom.om.OMElement;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.ArrayUtils;
@@ -61,7 +60,6 @@ import org.wso2.carbon.identity.core.util.IdentityConfigParser;
 import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
-import org.wso2.carbon.identity.oauth.OAuthUtil;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ClientException;
@@ -98,6 +96,7 @@ import java.security.cert.CertificateNotYetValidException;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPublicKey;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
@@ -710,8 +709,8 @@ public class TokenExchangeUtils {
 
             String idPGroups = null;
 
-            if (idPGroupsObj instanceof JSONArray) {
-                idPGroups = StringUtils.join(((JSONArray) idPGroupsObj).toArray(),
+            if (idPGroupsObj instanceof ArrayList) {
+                idPGroups = StringUtils.join(((ArrayList) idPGroupsObj).toArray(),
                         FrameworkUtils.getMultiAttributeSeparator());
             } else {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Invalid " + remoteClaimURIOfAppRoleClaim +
@@ -981,7 +980,7 @@ public class TokenExchangeUtils {
             }
             if (!isRegisteredClaim) {
                 Object value = entry.getValue();
-                if (value instanceof JSONArray) {
+                if (value instanceof ArrayList) {
                     String multiValueSeparator = FrameworkUtils.getMultiAttributeSeparator();
                     String multiValuesWithSeparator = StringUtils.join((Collection) value, multiValueSeparator);
                     customClaimMap.put(entry.getKey(), multiValuesWithSeparator);
