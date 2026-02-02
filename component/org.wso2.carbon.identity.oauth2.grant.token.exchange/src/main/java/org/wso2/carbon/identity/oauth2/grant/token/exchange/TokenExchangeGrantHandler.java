@@ -234,6 +234,14 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             JWTClaimsSet actorClaimsSet = getClaimSet(actorSignedJWT);
             String actorSubject = resolveSubject(actorClaimsSet);
             tokReqMsgCtx.addProperty("ACTOR_SUBJECT", actorSubject);
+            // Extract azp from actor token
+            Object actorAzpClaim = actorClaimsSet.getClaim(TokenExchangeConstants.AZP);
+            if (actorAzpClaim != null) {
+                tokReqMsgCtx.addProperty("ACTOR_AZP", actorAzpClaim.toString());
+                if (log.isDebugEnabled()) {
+                    log.debug("Actor AZP: " + actorAzpClaim.toString());
+                }
+            }
 
             // Check for existing act claim in subject token for nesting
             SignedJWT subjectSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
