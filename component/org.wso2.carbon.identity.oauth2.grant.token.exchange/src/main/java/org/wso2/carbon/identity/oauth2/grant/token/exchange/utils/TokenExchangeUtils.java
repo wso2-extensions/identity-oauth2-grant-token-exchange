@@ -24,6 +24,7 @@ import com.nimbusds.jose.JWSVerifier;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import net.minidev.json.JSONArray;
 import org.apache.axiom.om.OMElement;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.ArrayUtils;
@@ -1160,8 +1161,16 @@ public class TokenExchangeUtils {
                     if (claimMapping.getLocalClaim().getClaimUri().equals(lookupAttribute)) {
                         String mappedIdpClaim = claimMapping.getRemoteClaim().getClaimUri();
                         if (claimsSet.getClaim(mappedIdpClaim) != null) {
+                            Object claimValue;
+                            if (claimsSet.getClaim(mappedIdpClaim) instanceof List) {
+                                claimValue = convertToJSONArray((List)claimsSet.getClaim(mappedIdpClaim));
+                            } else if (claimsSet.getClaim(mappedIdpClaim) instanceof Map) {
+                                claimValue = convertToJSONObject((Map)claimsSet.getClaim(mappedIdpClaim));
+                            } else {
+                                claimValue = claimsSet.getClaim(mappedIdpClaim);
+                            }
                             localClaims.put(claimMapping.getLocalClaim().getClaimUri(),
-                                    claimsSet.getClaim(mappedIdpClaim).toString());
+                                    claimValue.toString());
                         }
                     }
                 }
@@ -1177,9 +1186,13 @@ public class TokenExchangeUtils {
                     if (ArrayUtils.contains(lookupAttributes, oidcClaim.getMappedLocalClaim()) &&
                             claimsSet.getClaim(oidcClaim.getClaimURI()) != null &&
                             !localClaims.containsKey(oidcClaim.getMappedLocalClaim())) {
-                        localClaims.put(oidcClaim.getMappedLocalClaim(),
-                                claimsSet.getClaim(oidcClaim.getClaimURI()).toString());
-
+                        Object claimValue = claimsSet.getClaim(oidcClaim.getClaimURI());
+                        if (claimValue instanceof List) {
+                            claimValue = convertToJSONArray((List)claimValue);
+                        } else if (claimValue instanceof Map) {
+                            claimValue = convertToJSONObject((Map)claimValue);
+                        }
+                        localClaims.put(oidcClaim.getMappedLocalClaim(), claimValue.toString());
                     }
                 }
             } catch (ClaimMetadataException e) {
@@ -1317,5 +1330,64 @@ public class TokenExchangeUtils {
         }
         // At this point 'verifier' will never be null;
         return signedJWT.verify(verifier);
+    }
+
+    /**
+     * Convert a List to a JSONArray, recursively converting any nested Maps or Lists.
+     * @param list The List to convert.
+     * @return The resulting JSONArray.
+     */
+    public static JSONArray convertToJSONArray(List<Object> list) {
+
+        JSONArray jsonArray = new JSONArray();
+        jsonArray.addAll(list);
+        recursivelyConvertToJSONArray(jsonArray);
+        return jsonArray;
+    }
+
+    /**
+     * Convert a Map to a JSONObject, recursively converting any nested Maps or Lists.
+     * @param map The Map to convert.
+     * @return The resulting JSONObject.
+     */
+    public static net.minidev.json.JSONObject convertToJSONObject(Map<String, Object> map) {
+
+        net.minidev.json.JSONObject jsonObject = new net.minidev.json.JSONObject(map);
+        recursivelyConvertToJSONObject(jsonObject);
+        return jsonObject;
+    }
+
+    private static void recursivelyConvertToJSONObject(net.minidev.json.JSONObject jsonObject) {
+
+        for (String key : jsonObject.keySet()) {
+            Object value = jsonObject.get(key);
+            if (value instanceof Map) {
+                net.minidev.json.JSONObject child = new net.minidev.json.JSONObject((Map<String, Object>) value);
+                recursivelyConvertToJSONObject(child);
+                jsonObject.put(key, child);
+            } else if (value instanceof List) {
+                JSONArray jsonArray = new JSONArray();
+                jsonArray.addAll((List<?>) value);
+                recursivelyConvertToJSONArray(jsonArray);
+                jsonObject.put(key, jsonArray);
+            }
+        }
+    }
+
+    private static void recursivelyConvertToJSONArray(JSONArray jsonArray) {
+
+        for (int i = 0; i < jsonArray.size(); i++) {
+            Object element = jsonArray.get(i);
+            if (element instanceof Map) {
+                net.minidev.json.JSONObject child = new net.minidev.json.JSONObject((Map<String, Object>) element);
+                recursivelyConvertToJSONObject(child);
+                jsonArray.set(i, child);
+            } else if (element instanceof List) {
+                JSONArray childArray = new JSONArray();
+                childArray.addAll((List<?>) element);
+                recursivelyConvertToJSONArray(childArray);
+                jsonArray.set(i, childArray);
+            }
+        }
     }
 }
