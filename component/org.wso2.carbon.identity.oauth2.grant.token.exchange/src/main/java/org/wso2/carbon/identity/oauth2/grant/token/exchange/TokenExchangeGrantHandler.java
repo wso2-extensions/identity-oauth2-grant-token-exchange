@@ -773,8 +773,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
         if (signedJWT == null) {
             // If no valid subject token found, handle the exception
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for "
-                    + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for " + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
         }
 
         // Extract claims from the JWT
@@ -1033,8 +1032,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     @Override
     public boolean issueRefreshToken() throws IdentityOAuth2Exception {
 
-        return OAuthServerConfiguration.getInstance()
-                .getValueForIsRefreshTokenAllowed(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        return OAuthServerConfiguration.getInstance().getValueForIsRefreshTokenAllowed(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
     }
 
     /**
@@ -1171,8 +1169,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @return IdentityProvider with @jwtIssuer
      * @throws IdentityOAuth2Exception if an error occurred when getting IDP
      */
-    protected IdentityProvider getIdentityProvider(OAuthTokenReqMessageContext tokReqMsgCtx, String jwtIssuer,
-                                                   String tenantDomain) throws IdentityOAuth2Exception {
+    protected IdentityProvider getIdentityProvider(OAuthTokenReqMessageContext tokReqMsgCtx, String jwtIssuer, String tenantDomain) throws IdentityOAuth2Exception {
 
         return getIDP(jwtIssuer, tenantDomain);
     }
