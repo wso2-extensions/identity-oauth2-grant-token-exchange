@@ -83,6 +83,8 @@ import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenEx
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateIssuedAtTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateSignature;
 import static org.wso2.carbon.identity.oauth2.util.OAuth2Util.isJWT;
+import static org.wso2.carbon.identity.oauth2.token.AccessTokenIssuer.OAUTH_APP_DO;
+import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
 
 /**
  * Class to handle Token Exchange grant type.
@@ -134,6 +136,24 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             requestedAudience = requestParams.get(Constants.TokenExchangeConstants.AUDIENCE);
         }
 
+        // Set requested audience in the token request context so JWTTokenIssuer can use it
+        if (StringUtils.isNotEmpty(requestedAudience)) {
+            // Parse comma-separated audiences if multiple are provided
+            List<String> requestedAudiences = Arrays.asList(requestedAudience.split(","))
+                    .stream()
+                    .map(String::trim)
+                    .filter(StringUtils::isNotEmpty)
+                    .collect(Collectors.toList());
+
+            if (!requestedAudiences.isEmpty()) {
+                validateRequestedAudience(tokReqMsgCtx, requestedAudiences);
+                tokReqMsgCtx.setAudiences(requestedAudiences);
+                if (log.isDebugEnabled()) {
+                    log.debug("Requested audiences in token exchange: " + requestedAudiences);
+                }
+            }
+        }
+
         String tenantDomain = getTenantDomain(tokReqMsgCtx);
         if (isImpersonationRequest(requestParams)) {
             validateSubjectToken(tokReqMsgCtx, requestParams, tenantDomain);
@@ -157,6 +177,54 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                     "Unsupported subject token type : " + subjectTokenType + " provided");
         }
         return true;
+    }
+
+    /**
+     * Validates that the requested audience is allowed for the application.
+     *
+     * @param tokReqMsgCtx OAuthTokenReqMessageContext
+     * @param requestedAudiences Requested audiences
+     * @throws IdentityOAuth2Exception if validation fails
+     */
+    private void validateRequestedAudience(OAuthTokenReqMessageContext tokReqMsgCtx,
+                                           List<String> requestedAudiences)
+            throws IdentityOAuth2Exception {
+
+        if (requestedAudiences == null || requestedAudiences.isEmpty()) {
+            return;
+        }
+
+        // Get the OAuthAppDO to check allowed audiences
+        OAuthAppDO oAuthAppDO = (OAuthAppDO) tokReqMsgCtx.getProperty(OAUTH_APP_DO);
+        if (oAuthAppDO == null) {
+            // Try to load it
+            try {
+                String consumerKey = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
+                String tenantDomain = getTenantDomain(tokReqMsgCtx);
+                oAuthAppDO = OAuth2Util.getAppInformationByClientId(consumerKey, tenantDomain);
+            } catch (Exception e) {
+                handleException(OAuth2ErrorCodes.SERVER_ERROR,
+                        "Error while retrieving application information", e);
+            }
+        }
+
+        // Get allowed audiences for this application
+        List<String> allowedAudiences = OAuth2Util.getOIDCAudience(
+                tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId(),
+                oAuthAppDO);
+
+        // Validate each requested audience
+        for (String requestedAud : requestedAudiences) {
+            if (!allowedAudiences.contains(requestedAud)) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                        "Requested audience '" + requestedAud + "' is not allowed for this application. " +
+                                "Allowed audiences: " + String.join(", ", allowedAudiences));
+            }
+        }
+
+        if (log.isDebugEnabled()) {
+            log.debug("Requested audiences validated successfully: " + requestedAudiences);
+        }
     }
 
     /**
