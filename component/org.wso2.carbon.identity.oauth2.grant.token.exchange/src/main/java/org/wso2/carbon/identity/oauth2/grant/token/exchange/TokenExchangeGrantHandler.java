@@ -54,14 +54,7 @@ import org.wso2.carbon.user.core.listener.UserOperationEventListener;
 import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
@@ -111,6 +104,35 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     }
 
     /**
+     * Recursively extracts all actor subjects from a nested act claim chain.
+     *
+     * @param actClaim The act claim object (can be nested)
+     * @return List of actor subjects in order from most recent to oldest
+     */
+    private List<String> extractActorChain(Object actClaim) {
+
+        List<String> actorChain = new ArrayList<>();
+
+        if (actClaim instanceof Map) {
+            Map<String, Object> actMap = (Map<String, Object>) actClaim;
+
+            // Get the subject at this level
+            Object subClaim = actMap.get("sub");
+            if (subClaim != null) {
+                actorChain.add(subClaim.toString());
+            }
+
+            // Recursively process nested act claim
+            Object nestedAct = actMap.get("act");
+            if (nestedAct != null) {
+                actorChain.addAll(extractActorChain(nestedAct));
+            }
+        }
+
+        return actorChain;
+    }
+
+    /**
      * Validate the Token Exchange Grant.
      * Checks whether the token request satisfies the requirements to exchange the token.
      *
@@ -143,6 +165,44 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
             return true;
         }
+
+        // Check for delegation (actor token provided but no may_act in subject token)
+        if (isDelegationRequest(requestParams)) {
+            validateSubjectTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
+            validateActorTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
+            // Set impersonation flag to false for delegation
+            tokReqMsgCtx.setImpersonationRequest(false);
+            tokReqMsgCtx.addProperty("IS_DELEGATION_REQUEST", true);
+
+            // Extract and set actor subject from actor token
+            SignedJWT actorSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
+            JWTClaimsSet actorClaimsSet = getClaimSet(actorSignedJWT);
+            String actorSubject = resolveSubject(actorClaimsSet);
+            tokReqMsgCtx.addProperty("ACTOR_SUBJECT", actorSubject);
+            // Extract azp from actor token
+            Object actorAzpClaim = actorClaimsSet.getClaim(TokenExchangeConstants.AZP);
+            if (actorAzpClaim != null) {
+                tokReqMsgCtx.addProperty("ACTOR_AZP", actorAzpClaim.toString());
+                if (log.isDebugEnabled()) {
+                    log.debug("Actor AZP: " + actorAzpClaim.toString());
+                }
+            }
+
+            // Check for existing act claim in subject token for nesting
+            SignedJWT subjectSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
+            JWTClaimsSet subjectClaimsSet = getClaimSet(subjectSignedJWT);
+            Object existingActClaim = subjectClaimsSet.getClaim("act");
+            if (existingActClaim != null) {
+                tokReqMsgCtx.addProperty("EXISTING_ACT_CLAIM", existingActClaim);
+                if (log.isDebugEnabled()) {
+                    List<String> existingActorChain = extractActorChain(existingActClaim);
+                    log.debug("Found existing act claim chain in subject token: " + existingActorChain);
+                    log.debug("Will nest under new actor: " + actorSubject);
+                }
+            }
+            setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
+            return true;
+        }
         validateRequestedTokenType(requestedTokenType);
 
         if (Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(subjectTokenType) || (Constants
@@ -172,6 +232,39 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 && requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)
                 && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)
                 && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
+    }
+
+    /**
+     * Checks if the token request is a delegation request.
+     * Delegation occurs when actor_token is provided but subject token doesn't have
+     * may_act claim.
+     *
+     * @param requestParams A Map<String, String> containing the request parameters.
+     * @return true if the request is a delegation request and false otherwise.
+     */
+    private boolean isDelegationRequest(Map<String, String> requestParams) throws IdentityOAuth2Exception {
+
+        // Check if all required parameters are present
+        if (!requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN) ||
+                !requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE) ||
+                !requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN) ||
+                !requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE)) {
+            return false;
+        }
+
+        // For delegation, the subject token must NOT have may_act claim
+        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
+        if (signedJWT == null) {
+            return false;
+        }
+
+        JWTClaimsSet claimsSet = getClaimSet(signedJWT);
+        if (claimsSet == null) {
+            return false;
+        }
+
+        // Check if may_act claim does NOT exist
+        return claimsSet.getClaim(MAY_ACT) == null;
     }
 
     /**
@@ -237,6 +330,90 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         // Validate the issuer of the subject token
         validateTokenIssuer(jwtIssuer, tenantDomain);
+
+        tokReqMsgCtx.addProperty(IMPERSONATED_SUBJECT, subject);
+        tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
+    }
+
+    /**
+     * Validates the subject token for delegation scenarios.
+     * Unlike impersonation, delegation does NOT require a may_act claim in the
+     * subject token.
+     *
+     * @param tokReqMsgCtx  OauthTokenReqMessageContext
+     * @param requestParams A Map<String, String> containing the request parameters.
+     * @param tenantDomain  The tenant domain associated with the request.
+     * @throws IdentityOAuth2Exception If there's an error during token validation.
+     */
+    private void validateSubjectTokenForDelegation(OAuthTokenReqMessageContext tokReqMsgCtx,
+                                                   Map<String, String> requestParams,
+                                                   String tenantDomain)
+            throws IdentityOAuth2Exception {
+
+        // Retrieve the signed JWT object from the request parameters
+        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
+        if (signedJWT == null) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "No Valid subject token was found for " + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        }
+
+        // Extract claims from the JWT
+        JWTClaimsSet claimsSet = getClaimSet(signedJWT);
+        if (claimsSet == null) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given Subject Token");
+        }
+
+        // Validate mandatory claims
+        String subject = resolveSubject(claimsSet);
+        validateMandatoryClaims(claimsSet, subject);
+
+        // NOTE: We SKIP impersonator validation for delegation
+        // In delegation, there is no may_act claim because this is not impersonation
+
+        String jwtIssuer = claimsSet.getIssuer();
+        IdentityProvider identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
+
+        try {
+            if (validateSignature(signedJWT, identityProvider, tenantDomain)) {
+                log.debug("Signature/MAC validated successfully for subject token.");
+            } else {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication "
+                        + "invalid for subject token.");
+            }
+        } catch (JOSEException e) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature for subject token ", e);
+        }
+
+        checkJWTValidity(claimsSet);
+
+        // Validate the audience of the subject token
+        List<String> audiences = claimsSet.getAudience();
+
+        // Check if issuer is in the audience list
+        String idpIssuerName = OAuth2Util.getIssuerLocation(tenantDomain);
+        boolean issuerInAudience = audiences != null && audiences.contains(idpIssuerName);
+
+        if (!issuerInAudience) {
+            // Fallback: Check if the issuer alias value is present in audience
+            String idpAlias = getIDPAlias(identityProvider, tenantDomain);
+            if (StringUtils.isNotEmpty(idpAlias)) {
+                issuerInAudience = audiences.stream().anyMatch(aud -> aud.equals(idpAlias));
+            }
+
+            // If still not found in audience, validate the iss claim as fallback
+            if (!issuerInAudience) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Issuer not found in audience list. Validating iss claim as fallback.");
+                }
+                validateTokenIssuer(jwtIssuer, tenantDomain);
+            }
+        }
+
+        // Validate that requesting client is in the audience list
+        if (!validateSubjectTokenAudience(audiences, tokReqMsgCtx)) {
+            TokenExchangeUtils.handleClientException(TokenExchangeConstants.INVALID_TARGET,
+                    "Invalid audience values provided for subject token.");
+        }
 
         tokReqMsgCtx.addProperty(IMPERSONATED_SUBJECT, subject);
         tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
@@ -341,6 +518,70 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         checkJWTValidity(claimsSet);
 
         // Validate the issuer of the subject token
+        validateTokenIssuer(jwtIssuer, tenantDomain);
+
+        tokReqMsgCtx.addProperty(IMPERSONATING_ACTOR, actorTokenSubject);
+    }
+
+    /**
+     * Validates the actor token for delegation requests.
+     * Unlike impersonation, delegation does NOT require validating that the actor
+     * token subject
+     * matches an impersonator from the may_act claim, since delegation doesn't use
+     * may_act.
+     *
+     * @param tokReqMsgCtx  OauthTokenReqMessageContext
+     * @param requestParams A Map<String, String> containing the request parameters.
+     * @param tenantDomain  The tenant domain associated with the request.
+     * @throws IdentityOAuth2Exception If there's an error during token validation.
+     */
+    private void validateActorTokenForDelegation(OAuthTokenReqMessageContext tokReqMsgCtx,
+                                                 Map<String, String> requestParams,
+                                                 String tenantDomain)
+            throws IdentityOAuth2Exception {
+
+        // Retrieve the signed JWT object from the request parameters
+        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
+        if (signedJWT == null) {
+            // If no valid actor token found, handle the exception
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid actor token was found for "
+                    + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        }
+
+        // Extract claims from the JWT
+        JWTClaimsSet claimsSet = getClaimSet(signedJWT);
+        if (claimsSet == null) {
+            // If claim values are empty, handle the exception
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given Actor Token");
+        }
+
+        // Validate mandatory claims
+        String actorTokenSubject = resolveSubject(claimsSet);
+        validateMandatoryClaims(claimsSet, actorTokenSubject);
+
+        // NOTE: For delegation, we skip the impersonator check since there's no may_act
+        // claim
+        // in the subject token. The actor is simply delegating on behalf of the
+        // subject.
+
+        String jwtIssuer = claimsSet.getIssuer();
+        IdentityProvider identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
+
+        try {
+            if (validateSignature(signedJWT, identityProvider, tenantDomain)) {
+                log.debug("Signature/MAC validated successfully for actor token.");
+            } else {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication "
+                        + "invalid for actor token.");
+            }
+        } catch (JOSEException e) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature for actor token ", e);
+        }
+
+        // Check the validity of the JWT
+        checkJWTValidity(claimsSet);
+
+        // Validate the issuer of the actor token
         validateTokenIssuer(jwtIssuer, tenantDomain);
 
         tokReqMsgCtx.addProperty(IMPERSONATING_ACTOR, actorTokenSubject);
