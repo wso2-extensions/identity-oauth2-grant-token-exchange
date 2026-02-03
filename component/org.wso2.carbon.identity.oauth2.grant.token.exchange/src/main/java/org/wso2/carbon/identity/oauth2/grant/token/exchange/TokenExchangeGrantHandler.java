@@ -93,6 +93,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private int validityPeriodInMin;
     private String requestedTokenType = Constants.TokenExchangeConstants.JWT_TOKEN_TYPE;
     private String impersonator;
+    private static final String ACTOR_SUBJECT = "actor_subject";
+    private static final String IS_DOWNSCOPING_REQUEST = "is_downscoping_request";
+    private static final String ACT = "act";
 
     /**
      * Initialize the TokenExchangeGrantHandler.
@@ -135,6 +138,25 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         String tenantDomain = getTenantDomain(tokReqMsgCtx);
+        // Parse the subject token early to determine the flow type
+        SignedJWT subjectSignedJWT = null;
+        JWTClaimsSet subjectClaimsSet = null;
+
+        if (Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(subjectTokenType) ||
+                (Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType) &&
+                        isJWT(requestParams.get(Constants.TokenExchangeConstants.SUBJECT_TOKEN)))) {
+
+            subjectSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
+            if (subjectSignedJWT != null) {
+                subjectClaimsSet = getClaimSet(subjectSignedJWT);
+            }
+        }
+
+        // Check if this is a downscoping request (both tokens are access tokens, no may_act claim)
+        if (isDownscopingRequest(requestParams, subjectClaimsSet)) {
+            validateDownscopingRequest(tokReqMsgCtx, requestParams, tenantDomain, subjectSignedJWT, subjectClaimsSet);
+            return true;
+        }
         if (isImpersonationRequest(requestParams)) {
             validateSubjectToken(tokReqMsgCtx, requestParams, tenantDomain);
             validateActorToken(tokReqMsgCtx, requestParams, tenantDomain);
@@ -158,6 +180,149 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
         return true;
     }
+    /**
+     * Validates a downscoping request where both subject_token and actor_token are access tokens.
+     * In this scenario, we validate both tokens and use the intersection of their scopes.
+     *
+     * @param tokReqMsgCtx  OauthTokenReqMessageContext
+     * @param requestParams A Map<String, String> containing the request parameters.
+     * @param tenantDomain  The tenant domain associated with the request.
+     * @param subjectSignedJWT The parsed subject token JWT.
+     * @param subjectClaimsSet The claims set from the subject token.
+     * @throws IdentityOAuth2Exception If there's an error during validation.
+     */
+
+    private void validateDownscopingRequest(OAuthTokenReqMessageContext tokReqMsgCtx,
+                                            Map<String, String> requestParams,
+                                            String tenantDomain,
+                                            SignedJWT subjectSignedJWT,
+                                            JWTClaimsSet subjectClaimsSet) throws IdentityOAuth2Exception {
+
+        if (subjectClaimsSet == null) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given Subject Token");
+        }
+
+        // Validate subject token (access token)
+        String subjectTokenSubject = resolveSubject(subjectClaimsSet);
+        validateMandatoryClaims(subjectClaimsSet, subjectTokenSubject);
+
+        String jwtIssuer = subjectClaimsSet.getIssuer();
+        IdentityProvider identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
+
+        try {
+            if (validateSignature(subjectSignedJWT, identityProvider, tenantDomain)) {
+                log.debug("Signature/MAC validated successfully for subject token.");
+            } else {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                        "Signature or Message Authentication invalid for subject token.");
+            }
+        } catch (JOSEException e) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature for subject token ", e);
+        }
+
+        checkJWTValidity(subjectClaimsSet);
+        validateTokenIssuer(jwtIssuer, tenantDomain);
+
+        // **EXTRACT EXISTING ACT CLAIM FROM SUBJECT TOKEN ONLY**
+        Object existingActClaim = subjectClaimsSet.getClaim(ACT);
+
+        // Validate actor token
+        SignedJWT actorSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
+        if (actorSignedJWT == null) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "No Valid actor token was found for " + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        }
+
+        JWTClaimsSet actorClaimsSet = getClaimSet(actorSignedJWT);
+        if (actorClaimsSet == null) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given Actor Token");
+        }
+
+        String actorTokenSubject = resolveSubject(actorClaimsSet);
+        validateMandatoryClaims(actorClaimsSet, actorTokenSubject);
+
+        String actorJwtIssuer = actorClaimsSet.getIssuer();
+        IdentityProvider actorIdentityProvider = getIdentityProvider(tokReqMsgCtx, actorJwtIssuer, tenantDomain);
+
+        try {
+            if (validateSignature(actorSignedJWT, actorIdentityProvider, tenantDomain)) {
+                log.debug("Signature/MAC validated successfully for actor token.");
+            } else {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                        "Signature or Message Authentication invalid for actor token.");
+            }
+        } catch (JOSEException e) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature for actor token ", e);
+        }
+
+        checkJWTValidity(actorClaimsSet);
+        validateTokenIssuer(actorJwtIssuer, tenantDomain);
+
+        // For downscoping, set the subject from the subject token as the authorized user
+        String authorizedOrgId = resolveUserAccessingOrgId(subjectClaimsSet);
+        String userResideOrgId = resolveUserResideOrgId(subjectClaimsSet);
+
+        if (authorizedOrgId != null && userResideOrgId != null) {
+            setAuthorizedUserForImpersonation(
+                    tokReqMsgCtx, identityProvider, subjectTokenSubject, subjectClaimsSet,
+                    tenantDomain, authorizedOrgId, userResideOrgId);
+        } else {
+            setAuthorizedUserForImpersonation(
+                    tokReqMsgCtx, identityProvider, subjectTokenSubject, subjectClaimsSet, tenantDomain);
+        }
+
+        // Handle scope downscoping
+        String[] requestedScopes = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope();
+        String[] subjectScopes = getScopes(subjectClaimsSet, tokReqMsgCtx);
+        String[] actorScopes = getScopes(actorClaimsSet, tokReqMsgCtx);
+        String[] finalScopes = calculateScopeIntersection(requestedScopes, subjectScopes, actorScopes);
+        tokReqMsgCtx.setScope(finalScopes);
+
+        // **STORE ONLY THE ACTOR'S SUBJECT (NOT THE ACTOR TOKEN'S ACT CLAIM)**
+        tokReqMsgCtx.addProperty(ACTOR_SUBJECT, actorTokenSubject);
+
+        // **STORE THE SUBJECT TOKEN'S EXISTING ACT CLAIM (IF PRESENT)**
+        if (existingActClaim != null) {
+            tokReqMsgCtx.addProperty("EXISTING_ACT_CLAIM", existingActClaim);
+            if (log.isDebugEnabled()) {
+                log.debug("Found existing act claim in subject token - will be nested in new token");
+            }
+        }
+
+        // Mark this as a downscoping request
+        tokReqMsgCtx.addProperty(IS_DOWNSCOPING_REQUEST, true);
+
+        if (log.isDebugEnabled()) {
+            log.debug("Downscoping request validated. Subject: " + subjectTokenSubject +
+                    ", Actor: " + actorTokenSubject +
+                    ", Has existing act claim from subject token: " + (existingActClaim != null) +
+                    ", Final scopes: " + String.join(" ", finalScopes));
+        }
+    }
+
+    /**
+     * Calculates scopes for downscoping request.
+     * For downscoping, we only check that requested scopes are available in the subject token.
+     * The actor token is used for authorization verification, not scope restriction.
+     *
+     * @param requestedScopes Scopes requested in the token exchange request
+     * @param subjectScopes Scopes present in the subject token
+     * @param actorScopes Scopes present in the actor token (not used for intersection)
+     * @return Scopes that are both requested and available in subject token
+     */
+    private String[] calculateScopeIntersection(String[] requestedScopes, String[] subjectScopes, String[] actorScopes) {
+
+        // If no scopes explicitly requested, return all subject token scopes
+        if (ArrayUtils.isEmpty(requestedScopes)) {
+            return subjectScopes;
+        }
+
+        // Return only requested scopes that exist in subject token
+        // Actor scopes are NOT checked - actor token proves authorization to downscope,
+        // but doesn't limit which scopes can be granted
+        return filterRequestedScopes(requestedScopes, subjectScopes);
+    }
+
 
     /**
      * Checks if the token request is an impersonation request by inspecting the provided request parameters.
@@ -172,6 +337,44 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 && requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)
                 && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)
                 && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
+    }
+
+    /**
+     * Checks if the token request is a downscoping request by inspecting the provided request parameters.
+     * Downscoping occurs when both subject_token and actor_token are present and are both access tokens,
+     * but the subject token does not contain a may_act claim (which would indicate an impersonation flow).
+     *
+     * @param requestParams A Map<String, String> containing the request parameters.
+     * @param subjectTokenClaimsSet The JWT claims set from the subject token.
+     * @return true if the request is a downscoping request and false otherwise.
+     */
+    private boolean isDownscopingRequest(Map<String, String> requestParams, JWTClaimsSet subjectTokenClaimsSet) {
+
+        // Check if all required parameters are present for token exchange
+        boolean hasRequiredParams = requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN)
+                && requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)
+                && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)
+                && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
+
+        if (!hasRequiredParams) {
+            return false;
+        }
+
+        // Check if both tokens are access tokens
+        String subjectTokenType = requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN_TYPE);
+        String actorTokenType = requestParams.get(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
+
+        boolean bothAccessTokens = TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType)
+                && TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(actorTokenType);
+
+        if (!bothAccessTokens) {
+            return false;
+        }
+
+        // If both are access tokens, check if subject token has may_act claim
+        // If may_act is present, it's an impersonation flow
+        // If may_act is absent, it's a downscoping flow
+        return subjectTokenClaimsSet != null && subjectTokenClaimsSet.getClaim(MAY_ACT) == null;
     }
 
     /**
@@ -306,7 +509,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         if (signedJWT == null) {
             // If no valid subject token found, handle the exception
             handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for "
-                            + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+                    + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
         }
 
         // Extract claims from the JWT
@@ -618,7 +821,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @throws IdentityOAuth2Exception if an error occurred when getting IDP
      */
     protected IdentityProvider getIdentityProvider(OAuthTokenReqMessageContext tokReqMsgCtx, String jwtIssuer,
-            String tenantDomain) throws IdentityOAuth2Exception {
+                                                   String tenantDomain) throws IdentityOAuth2Exception {
 
         return getIDP(jwtIssuer, tenantDomain);
     }
