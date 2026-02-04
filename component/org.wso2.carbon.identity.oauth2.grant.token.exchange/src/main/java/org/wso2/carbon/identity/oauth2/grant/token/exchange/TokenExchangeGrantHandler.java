@@ -161,17 +161,34 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
     /**
      * Checks if the token request is an impersonation request by inspecting the provided request parameters.
+     * For impersonation, the subject token MUST contain a may_act claim.
      *
      * @param requestParams A Map<String, String> containing the request parameters.
      * @return true if the request is an impersonation request and false otherwise.
      */
-    private boolean isImpersonationRequest(Map<String, String> requestParams) {
+    private boolean isImpersonationRequest(Map<String, String> requestParams) throws IdentityOAuth2Exception {
 
         // Check if all required parameters are present
-        return requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN)
-                && requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)
-                && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)
-                && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
+        if (!requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN) ||
+                !requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE) ||
+                !requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN) ||
+                !requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE)) {
+            return false;
+        }
+
+        // For impersonation, the subject token MUST have may_act claim
+        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
+        if (signedJWT == null) {
+            return false;
+        }
+
+        JWTClaimsSet claimsSet = getClaimSet(signedJWT);
+        if (claimsSet == null) {
+            return false;
+        }
+
+        // Check if may_act claim exists
+        return claimsSet.getClaim(MAY_ACT) != null;
     }
 
     /**
