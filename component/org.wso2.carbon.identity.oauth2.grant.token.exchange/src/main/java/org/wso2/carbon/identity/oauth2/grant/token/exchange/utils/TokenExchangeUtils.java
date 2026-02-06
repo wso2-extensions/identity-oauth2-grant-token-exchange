@@ -24,6 +24,7 @@ import com.nimbusds.jose.JWSVerifier;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import net.minidev.json.JSONArray;
 import org.apache.axiom.om.OMElement;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.ArrayUtils;
@@ -132,6 +133,7 @@ public class TokenExchangeUtils {
             return null;
         }
         try {
+            IdentityUtil.validateX5CLength(subjectToken);
             signedJWT = SignedJWT.parse(subjectToken);
         } catch (ParseException e) {
             throw new IdentityOAuth2Exception("Error while parsing the JWT", e);
@@ -1160,8 +1162,16 @@ public class TokenExchangeUtils {
                     if (claimMapping.getLocalClaim().getClaimUri().equals(lookupAttribute)) {
                         String mappedIdpClaim = claimMapping.getRemoteClaim().getClaimUri();
                         if (claimsSet.getClaim(mappedIdpClaim) != null) {
+                            Object claimValue;
+                            if (claimsSet.getClaim(mappedIdpClaim) instanceof List) {
+                                claimValue = IdentityUtil.convertToJSONArray((List)claimsSet.getClaim(mappedIdpClaim));
+                            } else if (claimsSet.getClaim(mappedIdpClaim) instanceof Map) {
+                                claimValue = IdentityUtil.convertToJSONObject((Map)claimsSet.getClaim(mappedIdpClaim));
+                            } else {
+                                claimValue = claimsSet.getClaim(mappedIdpClaim);
+                            }
                             localClaims.put(claimMapping.getLocalClaim().getClaimUri(),
-                                    claimsSet.getClaim(mappedIdpClaim).toString());
+                                    IdentityUtil.convertToJson(claimValue).toString());
                         }
                     }
                 }
@@ -1177,9 +1187,9 @@ public class TokenExchangeUtils {
                     if (ArrayUtils.contains(lookupAttributes, oidcClaim.getMappedLocalClaim()) &&
                             claimsSet.getClaim(oidcClaim.getClaimURI()) != null &&
                             !localClaims.containsKey(oidcClaim.getMappedLocalClaim())) {
+                        Object claimValue = claimsSet.getClaim(oidcClaim.getClaimURI());
                         localClaims.put(oidcClaim.getMappedLocalClaim(),
-                                claimsSet.getClaim(oidcClaim.getClaimURI()).toString());
-
+                                IdentityUtil.convertToJson(claimValue).toString());
                     }
                 }
             } catch (ClaimMetadataException e) {
