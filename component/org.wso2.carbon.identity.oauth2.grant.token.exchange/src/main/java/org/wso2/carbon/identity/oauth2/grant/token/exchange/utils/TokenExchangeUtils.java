@@ -986,6 +986,8 @@ public class TokenExchangeUtils {
                     String multiValueSeparator = FrameworkUtils.getMultiAttributeSeparator();
                     String multiValuesWithSeparator = StringUtils.join((Collection) value, multiValueSeparator);
                     customClaimMap.put(entry.getKey(), multiValuesWithSeparator);
+                } else if (value instanceof Map) {
+                    customClaimMap.put(entry.getKey(), IdentityUtil.convertToJSONObject((Map)value).toString());
                 } else {
                     customClaimMap.put(entry.getKey(), value.toString());
                 }
