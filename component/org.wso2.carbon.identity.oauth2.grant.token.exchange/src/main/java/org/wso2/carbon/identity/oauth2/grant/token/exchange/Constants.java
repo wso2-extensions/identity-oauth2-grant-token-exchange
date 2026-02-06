@@ -63,6 +63,7 @@ public class Constants {
         public static final String USER_ORG = "user_org";
         public static final String ORG_ID = "org_id";
         public static final String SUB = "sub";
+        public static final String AZP = "azp";
         public static final String SCOPE = "scope";
 
     }
