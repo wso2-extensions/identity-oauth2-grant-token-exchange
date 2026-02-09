@@ -183,12 +183,12 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             tokReqMsgCtx.setImpersonationRequest(false);
             tokReqMsgCtx.addProperty("IS_DELEGATION_REQUEST", true);
 
-            // Extract and set actor subject from actor token
-            SignedJWT actorSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
-            JWTClaimsSet actorClaimsSet = getClaimSet(actorSignedJWT);
-            String actorSubject = resolveSubject(actorClaimsSet);
-            tokReqMsgCtx.addProperty("ACTOR_SUBJECT", actorSubject);
-            // Extract azp from actor token
+        // Extract and set actor subject from actor token
+        SignedJWT actorSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
+        JWTClaimsSet actorClaimsSet = getClaimSet(actorSignedJWT);
+        String actorSubject = resolveSubject(actorClaimsSet);
+        log.info("Processing delegation request with actor subject: " + actorSubject);
+        tokReqMsgCtx.addProperty("ACTOR_SUBJECT", actorSubject);
             Object actorAzpClaim = actorClaimsSet.getClaim(TokenExchangeConstants.AZP);
             if (actorAzpClaim != null) {
                 tokReqMsgCtx.addProperty("ACTOR_AZP", actorAzpClaim.toString());
