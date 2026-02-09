@@ -248,7 +248,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * Delegation occurs when actor_token is provided but subject token doesn't have
      * may_act claim.
      *
-     * @param requestParams A Map<String, String> containing the request parameters.
+     * @param requestParams request parameter map.
      * @return true if the request is a delegation request and false otherwise.
      */
     private boolean isDelegationRequest(Map<String, String> requestParams) throws IdentityOAuth2Exception {
