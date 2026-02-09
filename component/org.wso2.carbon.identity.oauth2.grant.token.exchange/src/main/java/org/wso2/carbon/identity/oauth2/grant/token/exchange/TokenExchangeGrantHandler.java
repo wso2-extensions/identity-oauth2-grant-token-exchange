@@ -124,7 +124,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         if (actClaim instanceof Map) {
             Map<String, Object> actMap = (Map<String, Object>) actClaim;
 
-            // Get the subject at this level
+            // Extract subject from the immediate act claim (most recent actor)
+            // Chain structure: { "sub": "actor1", "act": { "sub": "actor2", "act": {...} } }
             Object subClaim = actMap.get("sub");
             if (subClaim != null) {
                 actorChain.add(subClaim.toString());
