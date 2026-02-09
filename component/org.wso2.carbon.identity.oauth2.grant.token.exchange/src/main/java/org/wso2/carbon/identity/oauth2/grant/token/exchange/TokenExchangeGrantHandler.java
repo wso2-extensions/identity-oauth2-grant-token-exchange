@@ -117,7 +117,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @param actClaim The act claim object (can be nested)
      * @return List of actor subjects in order from most recent to oldest
      */
-    private List<String> extractActorChain(Object actClaim) {
+    private List<String> extractActorChain(Map<String, Object> actClaim) {
 
         List<String> actorChain = new ArrayList<>();
 
