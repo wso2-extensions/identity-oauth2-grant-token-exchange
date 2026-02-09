@@ -350,7 +350,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * subject token.
      *
      * @param tokReqMsgCtx  OauthTokenReqMessageContext
-     * @param requestParams A Map<String, String> containing the request parameters.
+     * @param requestParams request parameter map.
      * @param tenantDomain  The tenant domain associated with the request.
      * @throws IdentityOAuth2Exception If there's an error during token validation.
      */
