@@ -175,7 +175,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             return true;
         }
 
-        // Check for delegation (actor token provided but no may_act in subject token)
+        // Check for delegation (actor token provided, but no`may_act` claim in the subject token)
         if (isDelegationRequest(requestParams)) {
             validateSubjectTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
             validateActorTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
