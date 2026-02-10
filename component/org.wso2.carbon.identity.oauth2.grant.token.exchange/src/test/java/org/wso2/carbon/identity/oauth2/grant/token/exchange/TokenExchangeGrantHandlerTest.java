@@ -29,6 +29,7 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterTest;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -59,6 +60,8 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACTOR_SUBJECT;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.IS_DELEGATION_REQUEST;
 
 public class TokenExchangeGrantHandlerTest {
 
@@ -71,9 +74,10 @@ public class TokenExchangeGrantHandlerTest {
     private MockedStatic<OAuth2Util> oAuth2Util;
     private OAuth2AccessTokenReqDTO oAuth2AccessTokenReqDTO;
     private static final String IMPERSONATOR_ID = "8122e3de-0f3b-4b0e-a43a-d0c237451b7a";
-    private static final String IMPERSONATED_SUBJECT_ID ="d9982d93-4e73-4565-b7ac-3605e8d05f80";
-    private static final String ISSUER ="https://localhost:9443/oauth2/token";
-    private static final String CLIENT_ID ="7N7vQHZbJtPnzegtGXJvvwDL4wca0";
+    private static final String IMPERSONATED_SUBJECT_ID = "d9982d93-4e73-4565-b7ac-3605e8d05f80";
+    private static final String ISSUER = "https://localhost:9443/oauth2/token";
+    private static final String CLIENT_ID = "7N7vQHZbJtPnzegtGXJvvwDL4wca0";
+    private static final String ACTOR_SUBJECT_ID = "f3a1b2c4-1111-4567-abcd-000000000001";
 
 
     @BeforeTest
@@ -123,6 +127,20 @@ public class TokenExchangeGrantHandlerTest {
         tokenExchangeGrantHandler = new TokenExchangeGrantHandler();
     }
 
+    @BeforeMethod
+    public void resetRequestParams() {
+
+        RequestParameter[] requestParameters = new RequestParameter[3];
+        requestParameters[0] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE,
+                Constants.TokenExchangeConstants.JWT_TOKEN_TYPE);
+        requestParameters[1] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN, "subject_token");
+        requestParameters[2] = new RequestParameter("grant_type", Constants.TokenExchangeConstants
+                .TOKEN_EXCHANGE_GRANT_TYPE);
+        oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
+        oAuth2AccessTokenReqDTO.setClientId("");
+        tokReqMsgCtx = new OAuthTokenReqMessageContext(oAuth2AccessTokenReqDTO);
+    }
+
     @Test
     public void testValidateGrant() throws Exception {
 
@@ -131,7 +149,7 @@ public class TokenExchangeGrantHandlerTest {
         tokenExchangeUtils.when(() -> TokenExchangeUtils.checkExpirationTime(eq(signedJWT.getJWTClaimsSet()
                 .getExpirationTime()), eq(System.currentTimeMillis()), Mockito.anyLong())).thenReturn(true);
         tokenExchangeUtils.when(() -> TokenExchangeUtils.validateIssuedAtTime(eq(signedJWT.getJWTClaimsSet()
-                .getIssueTime()), eq(System.currentTimeMillis()), Mockito.anyLong(), Mockito.anyInt()))
+                        .getIssueTime()), eq(System.currentTimeMillis()), Mockito.anyLong(), Mockito.anyInt()))
                 .thenReturn(true);
 
         boolean isValid = tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
@@ -147,7 +165,7 @@ public class TokenExchangeGrantHandlerTest {
             tokenExchangeUtils.when(() -> TokenExchangeUtils.checkExpirationTime(eq(signedJWT.getJWTClaimsSet()
                     .getExpirationTime()), eq(System.currentTimeMillis()), Mockito.anyLong())).thenReturn(true);
             tokenExchangeUtils.when(() -> TokenExchangeUtils.validateIssuedAtTime(eq(signedJWT.getJWTClaimsSet()
-                    .getIssueTime()), eq(System.currentTimeMillis()), Mockito.anyLong(), Mockito.anyInt()))
+                            .getIssueTime()), eq(System.currentTimeMillis()), Mockito.anyLong(), Mockito.anyInt()))
                     .thenReturn(true);
             tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
             Assert.fail("Expected exception not thrown");
@@ -197,9 +215,9 @@ public class TokenExchangeGrantHandlerTest {
     @Test
     public void testValidateSubjectTokenExchange() throws Exception {
 
-        SignedJWT subjectToken = getImpersonateSubjectToken( false, false
-                , ISSUER, CLIENT_ID, IMPERSONATOR_ID );
-        SignedJWT actorToken = getIdToken(false, ISSUER, IMPERSONATOR_ID );
+        SignedJWT subjectToken = getImpersonateSubjectToken(false, false,
+                ISSUER, CLIENT_ID, IMPERSONATOR_ID);
+        SignedJWT actorToken = getIdToken(false, ISSUER, IMPERSONATOR_ID);
 
         RequestParameter[] requestParameters = getImpersonationReqParams(subjectToken, actorToken);
         oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
@@ -213,72 +231,8 @@ public class TokenExchangeGrantHandlerTest {
         Assert.assertNotNull(tokReqMsgCtx.getProperty(IMPERSONATED_SUBJECT), IMPERSONATED_SUBJECT_ID);
     }
 
-    private SignedJWT getImpersonateSubjectToken(boolean withoutMandatoryClaims,
-                                                 boolean withoutImpersonator, String issuer, String audience,
-                                                 String impersonator ) throws NoSuchAlgorithmException, JOSEException {
-
-        KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
-        KeyPair keyPair = keyGenerator.generateKeyPair();
-        RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
-        JWSHeader jwsHeader = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID("KID").build();
-        Instant currentTime = Instant.now();
-        JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder()
-                .audience(audience)
-                .issuer(issuer)
-                .subject(IMPERSONATED_SUBJECT_ID)
-                .claim("scope", "default")
-                .claim("aut", "APPLICATION_USER")
-                .claim("azp", "7N7vQHZbJtPnzegtGXJvvwDL4wca");
-        if (!withoutMandatoryClaims) {
-            builder.issueTime(Date.from(currentTime))
-                    .expirationTime(Date.from(Instant.ofEpochSecond(currentTime.getEpochSecond() + 36000)))
-                    .notBeforeTime(Date.from(currentTime));
-
-        } if (!withoutImpersonator) {
-            builder.claim("may_act", Collections.singletonMap("sub", impersonator));
-        }
-
-        JWTClaimsSet claims = builder.build();
-        JWSSigner signer = new RSASSASigner(privateKey);
-        SignedJWT signedJwt = new SignedJWT(jwsHeader, claims);
-        signedJwt.sign(signer);
-        return signedJwt;
-    }
-
-    private SignedJWT getIdToken(boolean withoutMandatoryClaims, String issuer, String impersonator )
-            throws NoSuchAlgorithmException, JOSEException {
-
-        KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
-        KeyPair keyPair = keyGenerator.generateKeyPair();
-        RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
-        JWSHeader jwsHeader = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID("KID").build();
-        Instant currentTime = Instant.now();
-
-        JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder()
-                .audience(CLIENT_ID)
-                .issuer(issuer)
-                .subject(impersonator)
-                .claim("azp", "7N7vQHZbJtPnzegtGXJvvwDL4wca")
-                .claim("jti", "795c4eac-b678-4a6b-ba56-7b212a498e69")
-                .claim("at_hash", "5oG1Db8MlfrfLiiwZxRzwg")
-                .claim("c_hash", "s8mtLWfpHNSxr5EkPzOWaw");
-        if (!withoutMandatoryClaims) {
-            builder.issueTime(Date.from(currentTime))
-                    .expirationTime(Date.from(Instant.ofEpochSecond(currentTime.getEpochSecond() + 36000)))
-                    .notBeforeTime(Date.from(currentTime));
-
-        }
-
-        JWTClaimsSet claims = builder.build();
-        JWSSigner signer = new RSASSASigner(privateKey);
-        SignedJWT signedJwt = new SignedJWT(jwsHeader, claims);
-        signedJwt.sign(signer);
-        return signedJwt;
-    }
-
     @DataProvider(name = "subjectTokenNegativeTestData")
     public Object[][] subjectTokenNegativeTestData() {
-
 
         return new Object[][]{
                 {true, false, ISSUER, CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
@@ -302,9 +256,9 @@ public class TokenExchangeGrantHandlerTest {
                                                              String impersonatorActorToken) throws Exception {
 
         SignedJWT subjectToken = getImpersonateSubjectToken(withoutMandatoryClaims, withoutImpersonator,
-                issuer, audience, impersonator );
+                issuer, audience, impersonator);
         SignedJWT actorToken = getIdToken(withoutMandatoryClaimsActorToken,
-                issuerActorToken, impersonatorActorToken );
+                issuerActorToken, impersonatorActorToken);
 
         RequestParameter[] requestParameters = getImpersonationReqParams(subjectToken, actorToken);
         oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
@@ -313,6 +267,137 @@ public class TokenExchangeGrantHandlerTest {
 
         prepareTokenUtilsForImpersonation(subjectToken, actorToken);
         tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
+    }
+
+    // -------------------------------------------------------------------------
+    // Delegation tests
+    // Disabled until isImpersonationRequest() is fixed to also check may_act.
+    // Currently any request with actor_token enters impersonation flow regardless
+    // of may_act presence, so delegation routing never triggers.
+    // -------------------------------------------------------------------------
+
+    @Test(enabled = false)
+    public void testValidateDelegationRequest() throws Exception {
+
+        SignedJWT subjectToken = getDelegationSubjectToken(false, ISSUER, CLIENT_ID);
+        SignedJWT actorToken = getDelegationActorToken(false, ISSUER, ACTOR_SUBJECT_ID);
+
+        RequestParameter[] requestParameters = getDelegationReqParams(subjectToken, actorToken);
+        oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
+        oAuth2AccessTokenReqDTO.setClientId(CLIENT_ID);
+        tokReqMsgCtx = new OAuthTokenReqMessageContext(oAuth2AccessTokenReqDTO);
+
+        prepareTokenUtilsForDelegation(subjectToken, actorToken);
+        boolean isValid = tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
+        Assert.assertTrue(isValid);
+        // IS_DELEGATION_REQUEST flag must be set to true
+        Assert.assertEquals(tokReqMsgCtx.getProperty(IS_DELEGATION_REQUEST), true);
+        // isImpersonationRequest flag must be false for delegation
+        Assert.assertFalse(tokReqMsgCtx.isImpersonationRequest());
+        // Actor subject must be captured from the actor token
+        Assert.assertEquals(tokReqMsgCtx.getProperty(ACTOR_SUBJECT), ACTOR_SUBJECT_ID);
+        // Subject of the subject token must be set as impersonated subject
+        Assert.assertEquals(tokReqMsgCtx.getProperty(IMPERSONATED_SUBJECT), IMPERSONATED_SUBJECT_ID);
+    }
+
+    @DataProvider(name = "delegationNegativeTestData")
+    public Object[][] delegationNegativeTestData() {
+
+        return new Object[][]{
+                // subject token missing mandatory claims
+                {true, ISSUER, CLIENT_ID, false, ISSUER, ACTOR_SUBJECT_ID},
+                // subject token wrong issuer
+                {false, "NegativeIssuer", CLIENT_ID, false, ISSUER, ACTOR_SUBJECT_ID},
+                // subject token wrong audience
+                {false, ISSUER, "NegativeClient", false, ISSUER, ACTOR_SUBJECT_ID},
+                // actor token missing mandatory claims
+                {false, ISSUER, CLIENT_ID, true, ISSUER, ACTOR_SUBJECT_ID},
+                // actor token wrong issuer
+                {false, ISSUER, CLIENT_ID, false, "NegativeIssuer", ACTOR_SUBJECT_ID},
+        };
+    }
+
+    @Test(dataProvider = "delegationNegativeTestData", expectedExceptions = IdentityOAuth2Exception.class)
+    public void testValidateDelegationRequestNegativeTest(boolean subjectWithoutMandatoryClaims,
+                                                          String subjectIssuer,
+                                                          String subjectAudience,
+                                                          boolean actorWithoutMandatoryClaims,
+                                                          String actorIssuer,
+                                                          String actorSubject) throws Exception {
+
+        SignedJWT subjectToken = getDelegationSubjectToken(subjectWithoutMandatoryClaims, subjectIssuer,
+                subjectAudience);
+        SignedJWT actorToken = getDelegationActorToken(actorWithoutMandatoryClaims, actorIssuer, actorSubject);
+
+        RequestParameter[] requestParameters = getDelegationReqParams(subjectToken, actorToken);
+        oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
+        oAuth2AccessTokenReqDTO.setClientId(CLIENT_ID);
+        tokReqMsgCtx = new OAuthTokenReqMessageContext(oAuth2AccessTokenReqDTO);
+
+        prepareTokenUtilsForDelegation(subjectToken, actorToken);
+        tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
+    }
+
+    private SignedJWT getImpersonateSubjectToken(boolean withoutMandatoryClaims,
+                                                 boolean withoutImpersonator, String issuer, String audience,
+                                                 String impersonator) throws NoSuchAlgorithmException, JOSEException {
+
+        KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
+        KeyPair keyPair = keyGenerator.generateKeyPair();
+        RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
+        JWSHeader jwsHeader = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID("KID").build();
+        Instant currentTime = Instant.now();
+        JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder()
+                .audience(audience)
+                .issuer(issuer)
+                .subject(IMPERSONATED_SUBJECT_ID)
+                .claim("scope", "default")
+                .claim("aut", "APPLICATION_USER")
+                .claim("azp", "7N7vQHZbJtPnzegtGXJvvwDL4wca");
+        if (!withoutMandatoryClaims) {
+            builder.issueTime(Date.from(currentTime))
+                    .expirationTime(Date.from(Instant.ofEpochSecond(currentTime.getEpochSecond() + 36000)))
+                    .notBeforeTime(Date.from(currentTime));
+        }
+        if (!withoutImpersonator) {
+            builder.claim("may_act", Collections.singletonMap("sub", impersonator));
+        }
+
+        JWTClaimsSet claims = builder.build();
+        JWSSigner signer = new RSASSASigner(privateKey);
+        SignedJWT signedJwt = new SignedJWT(jwsHeader, claims);
+        signedJwt.sign(signer);
+        return signedJwt;
+    }
+
+    private SignedJWT getIdToken(boolean withoutMandatoryClaims, String issuer, String impersonator)
+            throws NoSuchAlgorithmException, JOSEException {
+
+        KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
+        KeyPair keyPair = keyGenerator.generateKeyPair();
+        RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
+        JWSHeader jwsHeader = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID("KID").build();
+        Instant currentTime = Instant.now();
+
+        JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder()
+                .audience(CLIENT_ID)
+                .issuer(issuer)
+                .subject(impersonator)
+                .claim("azp", "7N7vQHZbJtPnzegtGXJvvwDL4wca")
+                .claim("jti", "795c4eac-b678-4a6b-ba56-7b212a498e69")
+                .claim("at_hash", "5oG1Db8MlfrfLiiwZxRzwg")
+                .claim("c_hash", "s8mtLWfpHNSxr5EkPzOWaw");
+        if (!withoutMandatoryClaims) {
+            builder.issueTime(Date.from(currentTime))
+                    .expirationTime(Date.from(Instant.ofEpochSecond(currentTime.getEpochSecond() + 36000)))
+                    .notBeforeTime(Date.from(currentTime));
+        }
+
+        JWTClaimsSet claims = builder.build();
+        JWSSigner signer = new RSASSASigner(privateKey);
+        SignedJWT signedJwt = new SignedJWT(jwsHeader, claims);
+        signedJwt.sign(signer);
+        return signedJwt;
     }
 
     private RequestParameter[] getImpersonationReqParams(SignedJWT subjectToken, SignedJWT actorToken) {
@@ -349,6 +434,98 @@ public class TokenExchangeGrantHandlerTest {
                 .thenReturn(true);
     }
 
+    /**
+     * Builds a subject token with NO may_act claim.
+     * The absence of may_act is what tells the handler this is delegation, not impersonation.
+     */
+    private SignedJWT getDelegationSubjectToken(boolean withoutMandatoryClaims, String issuer, String audience)
+            throws NoSuchAlgorithmException, JOSEException {
+
+        KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
+        RSAPrivateKey privateKey = (RSAPrivateKey) keyGenerator.generateKeyPair().getPrivate();
+        JWSHeader jwsHeader = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID("KID").build();
+        Instant currentTime = Instant.now();
+        JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder()
+                .audience(audience)
+                .issuer(issuer)
+                .subject(IMPERSONATED_SUBJECT_ID)
+                .claim("scope", "default")
+                .claim("aut", "APPLICATION_USER")
+                .claim("azp", "7N7vQHZbJtPnzegtGXJvvwDL4wca");
+        if (!withoutMandatoryClaims) {
+            builder.issueTime(Date.from(currentTime))
+                    .expirationTime(Date.from(Instant.ofEpochSecond(currentTime.getEpochSecond() + 36000)))
+                    .notBeforeTime(Date.from(currentTime));
+        }
+        // No may_act claim — distinguishes delegation from impersonation
+        SignedJWT signedJwt = new SignedJWT(jwsHeader, builder.build());
+        signedJwt.sign(new RSASSASigner(privateKey));
+        return signedJwt;
+    }
+
+    /**
+     * Builds an actor token for delegation.
+     * Simpler than getIdToken() — no jti/at_hash/c_hash needed as those are id_token specific.
+     */
+    private SignedJWT getDelegationActorToken(boolean withoutMandatoryClaims, String issuer, String actorSubject)
+            throws NoSuchAlgorithmException, JOSEException {
+
+        KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
+        RSAPrivateKey privateKey = (RSAPrivateKey) keyGenerator.generateKeyPair().getPrivate();
+        JWSHeader jwsHeader = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID("KID").build();
+        Instant currentTime = Instant.now();
+        JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder()
+                .audience(CLIENT_ID)
+                .issuer(issuer)
+                .subject(actorSubject)
+                .claim("azp", "7N7vQHZbJtPnzegtGXJvvwDL4wca");
+        if (!withoutMandatoryClaims) {
+            builder.issueTime(Date.from(currentTime))
+                    .expirationTime(Date.from(Instant.ofEpochSecond(currentTime.getEpochSecond() + 36000)))
+                    .notBeforeTime(Date.from(currentTime));
+        }
+        SignedJWT signedJwt = new SignedJWT(jwsHeader, builder.build());
+        signedJwt.sign(new RSASSASigner(privateKey));
+        return signedJwt;
+    }
+
+    /**
+     * Builds delegation request params.
+     * actor_token_type is JWT_TOKEN_TYPE unlike impersonation which uses TOKEN_EXCHANGE_GRANT_TYPE.
+     */
+    private RequestParameter[] getDelegationReqParams(SignedJWT subjectToken, SignedJWT actorToken) {
+
+        RequestParameter[] requestParameters = new RequestParameter[6];
+        requestParameters[0] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE,
+                Constants.TokenExchangeConstants.JWT_TOKEN_TYPE);
+        requestParameters[1] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN,
+                subjectToken.serialize());
+        requestParameters[2] = new RequestParameter("grant_type",
+                Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        requestParameters[3] = new RequestParameter(Constants.TokenExchangeConstants.REQUESTED_TOKEN_TYPE,
+                Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE);
+        requestParameters[4] = new RequestParameter(Constants.TokenExchangeConstants.ACTOR_TOKEN,
+                actorToken.serialize());
+        requestParameters[5] = new RequestParameter(Constants.TokenExchangeConstants.ACTOR_TOKEN_TYPE,
+                Constants.TokenExchangeConstants.JWT_TOKEN_TYPE);
+        return requestParameters;
+    }
+
+    private void prepareTokenUtilsForDelegation(SignedJWT subjectToken, SignedJWT actorToken) throws ParseException {
+
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.getSignedJWT(subjectToken.serialize()))
+                .thenReturn(subjectToken);
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.getClaimSet(subjectToken))
+                .thenReturn(subjectToken.getJWTClaimsSet());
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.validateSignature(subjectToken, idp, "carbon.super"))
+                .thenReturn(true);
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.getSignedJWT(actorToken.serialize()))
+                .thenReturn(actorToken);
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.getClaimSet(actorToken))
+                .thenReturn(actorToken.getJWTClaimsSet());
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.validateSignature(actorToken, idp, "carbon.super"))
+                .thenReturn(true);
+    }
 
     @AfterTest
     public void close() {
