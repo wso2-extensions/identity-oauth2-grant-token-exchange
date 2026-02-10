@@ -114,37 +114,30 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                     + "Token Exchange grant");
         }
     }
-
     /**
-     * Recursively extracts all actor subjects from a nested act claim chain.
+     * Recursively extracts all actor subjects from a nested ActClaim chain.
      *
-     * @param actClaim The act claim object (can be nested)
+     * @param actClaim The typed ActClaim (recursive type)
      * @return List of actor subjects in order from most recent to oldest
      */
-    private List<String> extractActorChain(Object actClaim) {
+    private List<String> extractActorChain(ActClaim actClaim) {
 
         List<String> actorChain = new ArrayList<>();
 
-        if (actClaim instanceof Map) {
-            Map<String, Object> actMap = (Map<String, Object>) actClaim;
+        if (actClaim == null) {
+            return actorChain;
+        }
 
-            // Extract subject from the immediate act claim (most recent actor)
-            // Chain structure: { "sub": "actor1", "act": { "sub": "actor2", "act": {...} } }
-            Object subClaim = actMap.get("sub");
-            if (subClaim != null) {
-                actorChain.add(subClaim.toString());
-            }
+        // Add the subject at this level
+        actorChain.add(actClaim.getSub());
 
-            // Recursively process nested act claim
-            Object nestedAct = actMap.get("act");
-            if (nestedAct != null) {
-                actorChain.addAll(extractActorChain(nestedAct));
-            }
+        // Recursively process the nested act claim
+        if (actClaim.hasNestedAct()) {
+            actorChain.addAll(extractActorChain(actClaim.getAct()));
         }
 
         return actorChain;
     }
-
     /**
      * Validate the Token Exchange Grant.
      * Checks whether the token request satisfies the requirements to exchange the token.
@@ -204,13 +197,13 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             // Check for existing act claim in subject token for nesting
             SignedJWT subjectSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
             JWTClaimsSet subjectClaimsSet = getClaimSet(subjectSignedJWT);
-            Object existingActClaim = subjectClaimsSet.getClaim("act");
+            Object rawActClaim = subjectClaimsSet.getClaim("act");
+            ActClaim existingActClaim = ActClaim.fromRawClaim(rawActClaim);
             if (existingActClaim != null) {
                 tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
                 if (log.isDebugEnabled()) {
                     List<String> existingActorChain = extractActorChain(existingActClaim);
-                    log.debug("Found existing act claim chain in subject token: " + existingActorChain);
-                    log.debug("Will nest under new actor: " + actorSubject);
+                    log.debug("Found existing act claim chain: " + existingActorChain);
                 }
             }
             setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
@@ -1019,5 +1012,51 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         checkExpirationTime(claimsSet.getExpirationTime(), currentTimeInMillis, timeStampSkewMillis);
         checkNotBeforeTime(claimsSet.getNotBeforeTime(), currentTimeInMillis, timeStampSkewMillis);
         validateIssuedAtTime(claimsSet.getIssueTime(), currentTimeInMillis, timeStampSkewMillis, validityPeriodInMin);
+    }
+
+    /**
+     * Represents the recursive 'act' (actor) claim structure in a JWT.
+     * Models the chain: { "sub": "actor1", "act": { "sub": "actor2", "act": {...} } }
+     */
+    public static class ActClaim {
+
+        private final String sub;
+        private final ActClaim act;
+
+        private ActClaim(String sub, ActClaim act) {
+            this.sub = sub;
+            this.act = act;
+        }
+
+        public String getSub() { return sub; }
+        public ActClaim getAct() { return act; }
+        public boolean hasNestedAct() { return act != null; }
+
+        /**
+         * Factory method: parses raw JWT claim Map into a typed ActClaim.
+         * Returns null if input is not a valid act claim map.
+         */
+        public static ActClaim fromRawClaim(Object rawClaim) {
+
+            if (!(rawClaim instanceof Map)) {
+                return null;
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> claimMap = (Map<String, Object>) rawClaim;
+
+            Object subValue = claimMap.get("sub");
+            if (subValue == null) {
+                return null;
+            }
+
+            String sub = subValue.toString();
+            Object nestedActRaw = claimMap.get("act");
+
+            // Recursive construction - builds the full chain
+            ActClaim nestedAct = (nestedActRaw != null) ? fromRawClaim(nestedActRaw) : null;
+
+            return new ActClaim(sub, nestedAct);
+        }
     }
 }
