@@ -71,6 +71,10 @@ import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ORG_ID;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.MAY_ACT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUB;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.USER_ORG;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.IS_DELEGATION_REQUEST;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACTOR_SUBJECT;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACTOR_AZP;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.EXISTING_ACT_CLAIM;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkExpirationTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkNotBeforeTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getClaimSet;
@@ -181,17 +185,17 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             validateActorTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
             // Set impersonation flag to false for delegation
             tokReqMsgCtx.setImpersonationRequest(false);
-            tokReqMsgCtx.addProperty("IS_DELEGATION_REQUEST", true);
+            tokReqMsgCtx.addProperty(IS_DELEGATION_REQUEST, true);
 
         // Extract and set actor subject from actor token
         SignedJWT actorSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
         JWTClaimsSet actorClaimsSet = getClaimSet(actorSignedJWT);
         String actorSubject = resolveSubject(actorClaimsSet);
         log.info("Processing delegation request with actor subject: " + actorSubject);
-        tokReqMsgCtx.addProperty("ACTOR_SUBJECT", actorSubject);
+        tokReqMsgCtx.addProperty(ACTOR_SUBJECT, actorSubject);
             Object actorAzpClaim = actorClaimsSet.getClaim(TokenExchangeConstants.AZP);
             if (actorAzpClaim != null) {
-                tokReqMsgCtx.addProperty("ACTOR_AZP", actorAzpClaim.toString());
+                tokReqMsgCtx.addProperty(ACTOR_AZP, actorAzpClaim.toString());
                 if (log.isDebugEnabled()) {
                     log.debug("Actor AZP: " + actorAzpClaim.toString());
                 }
@@ -202,7 +206,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             JWTClaimsSet subjectClaimsSet = getClaimSet(subjectSignedJWT);
             Object existingActClaim = subjectClaimsSet.getClaim("act");
             if (existingActClaim != null) {
-                tokReqMsgCtx.addProperty("EXISTING_ACT_CLAIM", existingActClaim);
+                tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
                 if (log.isDebugEnabled()) {
                     List<String> existingActorChain = extractActorChain(existingActClaim);
                     log.debug("Found existing act claim chain in subject token: " + existingActorChain);
