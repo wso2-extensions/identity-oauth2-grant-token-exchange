@@ -131,7 +131,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             return actorChain;
         }
 
-        // Add the subject at this level
+        // Collect actor subject at the current delegation level (most recent actor first)
         actorChain.add(actClaim.getSub());
 
         // Recursively process the nested act claim
@@ -189,7 +189,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             SignedJWT actorSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
             JWTClaimsSet actorClaimsSet = getClaimSet(actorSignedJWT);
             String actorSubject = resolveSubject(actorClaimsSet);
-            log.info("Processing delegation request with actor subject: " + actorSubject);
+            log.debug("Processing delegation request with actor subject: " + actorSubject);
             tokReqMsgCtx.addProperty(ACTOR_SUBJECT, actorSubject);
             Object actorAzpClaim = actorClaimsSet.getClaim(TokenExchangeConstants.AZP);
             if (actorAzpClaim != null) {
