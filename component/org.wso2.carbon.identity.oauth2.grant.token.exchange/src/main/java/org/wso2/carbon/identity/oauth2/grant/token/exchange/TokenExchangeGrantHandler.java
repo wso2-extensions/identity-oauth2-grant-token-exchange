@@ -53,6 +53,7 @@ import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
 import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
+import org.wso2.carbon.identity.oauth2.grant.token.exchange.model.ActClaim;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -68,13 +69,7 @@ import java.util.ArrayList;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ORG_ID;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.MAY_ACT;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUB;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.USER_ORG;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.IS_DELEGATION_REQUEST;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACTOR_SUBJECT;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACTOR_AZP;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.EXISTING_ACT_CLAIM;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.*;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkExpirationTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkNotBeforeTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getClaimSet;
@@ -163,6 +158,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         String tenantDomain = getTenantDomain(tokReqMsgCtx);
+        SignedJWT subjectSignedJWT = getSignedJWT(requestParams.get(SUBJECT_TOKEN));
+        JWTClaimsSet subjectClaimsSet = (subjectSignedJWT != null) ? getClaimSet(subjectSignedJWT) : null;
         if (isImpersonationRequest(requestParams)) {
             validateSubjectToken(tokReqMsgCtx, requestParams, tenantDomain);
             validateActorToken(tokReqMsgCtx, requestParams, tenantDomain);
@@ -173,19 +170,19 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         // Check for delegation (actor token provided, but no`may_act` claim in the subject token)
-        if (isDelegationRequest(requestParams)) {
-            validateSubjectTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
+        if (isDelegationRequest(requestParams, subjectClaimsSet)) {
+            validateSubjectTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain, subjectSignedJWT, subjectClaimsSet);
             validateActorTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
             // Set impersonation flag to false for delegation
             tokReqMsgCtx.setImpersonationRequest(false);
             tokReqMsgCtx.addProperty(IS_DELEGATION_REQUEST, true);
 
-        // Extract and set actor subject from actor token
-        SignedJWT actorSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
-        JWTClaimsSet actorClaimsSet = getClaimSet(actorSignedJWT);
-        String actorSubject = resolveSubject(actorClaimsSet);
-        log.info("Processing delegation request with actor subject: " + actorSubject);
-        tokReqMsgCtx.addProperty(ACTOR_SUBJECT, actorSubject);
+            // Extract and set actor subject from actor token
+            SignedJWT actorSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
+            JWTClaimsSet actorClaimsSet = getClaimSet(actorSignedJWT);
+            String actorSubject = resolveSubject(actorClaimsSet);
+            log.info("Processing delegation request with actor subject: " + actorSubject);
+            tokReqMsgCtx.addProperty(ACTOR_SUBJECT, actorSubject);
             Object actorAzpClaim = actorClaimsSet.getClaim(TokenExchangeConstants.AZP);
             if (actorAzpClaim != null) {
                 tokReqMsgCtx.addProperty(ACTOR_AZP, actorAzpClaim.toString());
@@ -194,10 +191,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 }
             }
 
-            // Check for existing act claim in subject token for nesting
-            SignedJWT subjectSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
-            JWTClaimsSet subjectClaimsSet = getClaimSet(subjectSignedJWT);
-            Object rawActClaim = subjectClaimsSet.getClaim("act");
+            Object rawActClaim = subjectClaimsSet.getClaim(ACT);
             ActClaim existingActClaim = ActClaim.fromRawClaim(rawActClaim);
             if (existingActClaim != null) {
                 tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
@@ -248,7 +242,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @param requestParams request parameter map.
      * @return true if the request is a delegation request and false otherwise.
      */
-    private boolean isDelegationRequest(Map<String, String> requestParams) throws IdentityOAuth2Exception {
+    private boolean isDelegationRequest(Map<String, String> requestParams, JWTClaimsSet subjectClaimsSet){
 
         // Check if all required parameters are present
         if (!requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN) ||
@@ -258,19 +252,11 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             return false;
         }
 
-        // For delegation, the subject token must NOT have may_act claim
-        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
-        if (signedJWT == null) {
+        if (subjectClaimsSet == null) {
             return false;
         }
-
-        JWTClaimsSet claimsSet = getClaimSet(signedJWT);
-        if (claimsSet == null) {
-            return false;
-        }
-
         // Check if may_act claim does NOT exist
-        return claimsSet.getClaim(MAY_ACT) == null;
+        return subjectClaimsSet.getClaim(MAY_ACT) == null;
     }
 
     /**
@@ -353,21 +339,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      */
     private void validateSubjectTokenForDelegation(OAuthTokenReqMessageContext tokReqMsgCtx,
                                                    Map<String, String> requestParams,
-                                                   String tenantDomain)
+                                                   String tenantDomain,
+                                                   SignedJWT signedJWT,
+                                                   JWTClaimsSet claimsSet)
             throws IdentityOAuth2Exception {
-
-        // Retrieve the signed JWT object from the request parameters
-        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
-        if (signedJWT == null) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
-                    "No Valid subject token was found for " + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
-        }
-
-        // Extract claims from the JWT
-        JWTClaimsSet claimsSet = getClaimSet(signedJWT);
-        if (claimsSet == null) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given Subject Token");
-        }
 
         // Validate mandatory claims
         String subject = resolveSubject(claimsSet);
@@ -394,32 +369,13 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         // Validate the audience of the subject token
         List<String> audiences = claimsSet.getAudience();
-
-        // Check if issuer is in the audience list
-        String idpIssuerName = OAuth2Util.getIssuerLocation(tenantDomain);
-        boolean issuerInAudience = audiences != null && audiences.contains(idpIssuerName);
-
-        if (!issuerInAudience) {
-            // Fallback: Check if the issuer alias value is present in audience
-            String idpAlias = getIDPAlias(identityProvider, tenantDomain);
-            if (StringUtils.isNotEmpty(idpAlias)) {
-                issuerInAudience = audiences.stream().anyMatch(aud -> aud.equals(idpAlias));
-            }
-
-            // If still not found in audience, validate the iss claim as fallback
-            if (!issuerInAudience) {
-                if (log.isDebugEnabled()) {
-                    log.debug("Issuer not found in audience list. Validating iss claim as fallback.");
-                }
-                validateTokenIssuer(jwtIssuer, tenantDomain);
-            }
-        }
-
-        // Validate that requesting client is in the audience list
         if (!validateSubjectTokenAudience(audiences, tokReqMsgCtx)) {
             TokenExchangeUtils.handleClientException(TokenExchangeConstants.INVALID_TARGET,
                     "Invalid audience values provided for subject token.");
         }
+
+        // Validate the issuer of the subject token
+        validateTokenIssuer(jwtIssuer, tenantDomain);
 
         tokReqMsgCtx.addProperty(IMPERSONATED_SUBJECT, subject);
         tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
@@ -1014,49 +970,4 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         validateIssuedAtTime(claimsSet.getIssueTime(), currentTimeInMillis, timeStampSkewMillis, validityPeriodInMin);
     }
 
-    /**
-     * Represents the recursive 'act' (actor) claim structure in a JWT.
-     * Models the chain: { "sub": "actor1", "act": { "sub": "actor2", "act": {...} } }
-     */
-    public static class ActClaim {
-
-        private final String sub;
-        private final ActClaim act;
-
-        private ActClaim(String sub, ActClaim act) {
-            this.sub = sub;
-            this.act = act;
-        }
-
-        public String getSub() { return sub; }
-        public ActClaim getAct() { return act; }
-        public boolean hasNestedAct() { return act != null; }
-
-        /**
-         * Factory method: parses raw JWT claim Map into a typed ActClaim.
-         * Returns null if input is not a valid act claim map.
-         */
-        public static ActClaim fromRawClaim(Object rawClaim) {
-
-            if (!(rawClaim instanceof Map)) {
-                return null;
-            }
-
-            @SuppressWarnings("unchecked")
-            Map<String, Object> claimMap = (Map<String, Object>) rawClaim;
-
-            Object subValue = claimMap.get("sub");
-            if (subValue == null) {
-                return null;
-            }
-
-            String sub = subValue.toString();
-            Object nestedActRaw = claimMap.get("act");
-
-            // Recursive construction - builds the full chain
-            ActClaim nestedAct = (nestedActRaw != null) ? fromRawClaim(nestedActRaw) : null;
-
-            return new ActClaim(sub, nestedAct);
-        }
-    }
 }

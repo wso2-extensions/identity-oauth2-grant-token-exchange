@@ -69,6 +69,7 @@ public class Constants {
         public static final String ACTOR_SUBJECT = "ACTOR_SUBJECT";
         public static final String ACTOR_AZP = "ACTOR_AZP";
         public static final String EXISTING_ACT_CLAIM = "EXISTING_ACT_CLAIM";
+        public static final String ACT = "act";
 
     }
 
