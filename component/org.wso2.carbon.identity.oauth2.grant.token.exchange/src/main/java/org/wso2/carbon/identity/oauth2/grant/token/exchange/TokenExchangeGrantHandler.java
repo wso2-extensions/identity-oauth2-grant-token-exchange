@@ -135,7 +135,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         String tenantDomain = getTenantDomain(tokReqMsgCtx);
-        if (isImpersonationRequest(requestParams)) {
+        SignedJWT subjectSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
+        JWTClaimsSet subjectClaimsSet = (subjectSignedJWT != null) ? getClaimSet(subjectSignedJWT) : null;
+        if (isImpersonationRequest(requestParams, subjectClaimsSet)) {
             validateSubjectToken(tokReqMsgCtx, requestParams, tenantDomain);
             validateActorToken(tokReqMsgCtx, requestParams, tenantDomain);
             // Set impersonation flag
@@ -166,7 +168,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @param requestParams A Map<String, String> containing the request parameters.
      * @return true if the request is an impersonation request and false otherwise.
      */
-    private boolean isImpersonationRequest(Map<String, String> requestParams) throws IdentityOAuth2Exception {
+    private boolean isImpersonationRequest(Map<String, String> requestParams, JWTClaimsSet subjectClaimsSet) {
 
         // Check if all required parameters are present
         if (!requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN) ||
@@ -177,18 +179,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         // For impersonation, the subject token MUST have may_act claim
-        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
-        if (signedJWT == null) {
+        if (subjectClaimsSet == null) {
             return false;
         }
-
-        JWTClaimsSet claimsSet = getClaimSet(signedJWT);
-        if (claimsSet == null) {
-            return false;
-        }
-
-        // Check if may_act claim exists
-        return claimsSet.getClaim(MAY_ACT) != null;
+        return subjectClaimsSet.getClaim(MAY_ACT) != null;
     }
 
     /**
