@@ -382,7 +382,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             return false;
         }
 
-        if (subjectClaimsSet == null) {                                             // ← no parsing, just null check
+        if (subjectClaimsSet == null) {
             return false;
         }
 
