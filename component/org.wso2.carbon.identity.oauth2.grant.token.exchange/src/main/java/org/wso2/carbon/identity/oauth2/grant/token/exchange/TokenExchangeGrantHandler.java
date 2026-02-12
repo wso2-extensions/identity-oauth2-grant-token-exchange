@@ -53,7 +53,6 @@ import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
 import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
-import org.wso2.carbon.identity.oauth2.grant.token.exchange.model.ActClaim;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -117,26 +116,64 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                     + "Token Exchange grant");
         }
     }
+
     /**
-     * Recursively extracts all actor subjects from a nested ActClaim chain.
+     * Safely extracts and validates the act claim from a JWT claims set.
      *
-     * @param actClaim The typed ActClaim (recursive type)
+     * @param claimsSet The JWT claims set
+     * @return The act claim as a Map, or null if not present or invalid
+     */
+    private Map<String, Object> extractActClaim(JWTClaimsSet claimsSet) {
+        Object rawActClaim = claimsSet.getClaim(ACT);
+
+        if (rawActClaim == null) {
+            return null;
+        }
+
+        if (!(rawActClaim instanceof Map)) {
+            if (log.isDebugEnabled()) {
+                log.debug("Invalid act claim type: expected Map, got " + rawActClaim.getClass().getName());
+            }
+            return null;
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> actClaim = (Map<String, Object>) rawActClaim;
+
+        // Validate required 'sub' field
+        if (actClaim.get(SUB) == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("Invalid act claim: missing required 'sub' field");
+            }
+            return null;
+        }
+
+        return actClaim;
+    }
+    /**
+     * Recursively extracts all actor subjects from a nested act claim chain.
+     *
+     * @param actClaim The act claim map (recursive structure)
      * @return List of actor subjects in order from most recent to oldest
      */
-    private List<String> extractActorChain(ActClaim actClaim) {
-
+    private List<String> extractActorChain(Map<String, Object> actClaim) {
         List<String> actorChain = new ArrayList<>();
 
         if (actClaim == null) {
             return actorChain;
         }
 
-        // Collect actor subject at the current delegation level (most recent actor first)
-        actorChain.add(actClaim.getSub());
+        // Get the subject at this level
+        Object subClaim = actClaim.get(SUB);
+        if (subClaim != null) {
+            actorChain.add(subClaim.toString());
+        }
 
-        // Recursively process the nested act claim
-        if (actClaim.hasNestedAct()) {
-            actorChain.addAll(extractActorChain(actClaim.getAct()));
+        // Recursively process nested act claim
+        Object nestedActRaw = actClaim.get(ACT);
+        if (nestedActRaw instanceof Map) {
+            Map<String, Object> nestedAct = (Map<String, Object>) nestedActRaw;
+            actorChain.addAll(extractActorChain(nestedAct));
         }
 
         return actorChain;
@@ -199,10 +236,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 }
             }
 
-            Object rawActClaim = subjectClaimsSet.getClaim(ACT);
-            ActClaim existingActClaim = ActClaim.fromRawClaim(rawActClaim);
+            Map<String, Object> existingActClaim = extractActClaim(subjectClaimsSet);
             if (existingActClaim != null) {
                 tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
+
                 if (log.isDebugEnabled()) {
                     List<String> existingActorChain = extractActorChain(existingActClaim);
                     log.debug("Found existing act claim chain: " + existingActorChain);
