@@ -124,6 +124,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @return The act claim as a Map, or null if not present or invalid
      */
     private Map<String, Object> extractActClaim(JWTClaimsSet claimsSet) {
+        
         Object rawActClaim = claimsSet.getClaim(ACT);
 
         if (rawActClaim == null) {
@@ -157,6 +158,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @return List of actor subjects in order from most recent to oldest
      */
     private List<String> extractActorChain(Map<String, Object> actClaim) {
+        
         List<String> actorChain = new ArrayList<>();
 
         if (actClaim == null) {
