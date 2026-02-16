@@ -160,6 +160,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         List<String> actorChain = new ArrayList<>();
 
         if (actClaim == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("No act claim to extract - returning empty actor chain");
+            }
             return actorChain;
         }
 
