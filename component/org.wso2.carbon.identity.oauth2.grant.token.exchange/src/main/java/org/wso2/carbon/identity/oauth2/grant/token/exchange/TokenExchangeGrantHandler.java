@@ -123,34 +123,32 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @param claimsSet The JWT claims set
      * @return The act claim as a Map, or null if not present or invalid
      */
-    private Map<String, Object> extractActClaim(JWTClaimsSet claimsSet) {
-        
+    private Map<String, Object> extractActClaim(JWTClaimsSet claimsSet) throws IdentityOAuth2Exception {
+    
         Object rawActClaim = claimsSet.getClaim(ACT);
-
+        
+        // No act claim = valid (no delegation)
         if (rawActClaim == null) {
             return null;
         }
-
+        
+        // Act exists but wrong type = INVALID TOKEN
         if (!(rawActClaim instanceof Map)) {
-            if (log.isDebugEnabled()) {
-                log.debug("Invalid act claim type: expected Map, got " + rawActClaim.getClass().getName());
-            }
-            return null;
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, 
+                "Invalid act claim: expected JSON object, got " + rawActClaim.getClass().getName());
         }
 
-        @SuppressWarnings("unchecked")
         Map<String, Object> actClaim = (Map<String, Object>) rawActClaim;
-
-        // Validate required 'sub' field
+        
+        // Act exists but missing required 'sub' = INVALID TOKEN
         if (actClaim.get(SUB) == null) {
-            if (log.isDebugEnabled()) {
-                log.debug("Invalid act claim: missing required 'sub' field");
-            }
-            return null;
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, 
+                "Invalid act claim: missing required 'sub' field as per RFC 8693");
         }
-
+        
         return actClaim;
     }
+    
     /**
      * Recursively extracts all actor subjects from a nested act claim chain.
      *
@@ -180,6 +178,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         return actorChain;
     }
+    
     /**
      * Validate the Token Exchange Grant.
      * Checks whether the token request satisfies the requirements to exchange the token.
