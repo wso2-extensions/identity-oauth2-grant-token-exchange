@@ -689,6 +689,13 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 TokenExchangeUtils.handleClientException(Constants.TokenExchangeConstants.INVALID_TARGET,
                         "Invalid audience values provided");
             }
+            // set the audiences in the token request message context
+            if (requestedAudience != null && !requestedAudience.isEmpty()) {
+                List<String> audienceList = Arrays.stream(requestedAudience.split(","))
+                        .map(String::trim)
+                        .collect(Collectors.toList());
+                tokReqMsgCtx.setAudiences(audienceList);
+            }
 
             boolean customClaimsValidated = validateCustomClaims(claimsSet.getClaims(), identityProvider, params);
             if (!customClaimsValidated) {
