@@ -166,7 +166,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             return actorChain;
         }
 
-        // Get the subject at this level
+        // Extract the actor subject from the current delegation level and add to chain
         Object subClaim = actClaim.get(SUB);
         if (subClaim != null) {
             actorChain.add(subClaim.toString());
