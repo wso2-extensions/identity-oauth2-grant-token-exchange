@@ -1018,5 +1018,4 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         checkNotBeforeTime(claimsSet.getNotBeforeTime(), currentTimeInMillis, timeStampSkewMillis);
         validateIssuedAtTime(claimsSet.getIssueTime(), currentTimeInMillis, timeStampSkewMillis, validityPeriodInMin);
     }
-
 }
