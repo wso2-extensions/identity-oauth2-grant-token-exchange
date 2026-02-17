@@ -135,7 +135,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         String tenantDomain = getTenantDomain(tokReqMsgCtx);
-        if (isImpersonationRequest(requestParams)) {
+        SignedJWT subjectSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
+        JWTClaimsSet subjectClaimsSet = (subjectSignedJWT != null) ? getClaimSet(subjectSignedJWT) : null;
+        if (isImpersonationRequest(requestParams, subjectClaimsSet)) {
             validateSubjectToken(tokReqMsgCtx, requestParams, tenantDomain);
             validateActorToken(tokReqMsgCtx, requestParams, tenantDomain);
             // Set impersonation flag
@@ -161,17 +163,26 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
     /**
      * Checks if the token request is an impersonation request by inspecting the provided request parameters.
+     * For impersonation, the subject token MUST contain a may_act claim.
      *
      * @param requestParams A Map<String, String> containing the request parameters.
      * @return true if the request is an impersonation request and false otherwise.
      */
-    private boolean isImpersonationRequest(Map<String, String> requestParams) {
+    private boolean isImpersonationRequest(Map<String, String> requestParams, JWTClaimsSet subjectClaimsSet) {
 
         // Check if all required parameters are present
-        return requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN)
-                && requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)
-                && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)
-                && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
+        if (!requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN) ||
+                !requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE) ||
+                !requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN) ||
+                !requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE)) {
+            return false;
+        }
+
+        // For impersonation, the subject token MUST have may_act claim
+        if (subjectClaimsSet == null) {
+            return false;
+        }
+        return subjectClaimsSet.getClaim(MAY_ACT) != null;
     }
 
     /**
