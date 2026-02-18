@@ -124,31 +124,31 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @return The act claim as a Map, or null if not present or invalid
      */
     private Map<String, Object> extractActClaim(JWTClaimsSet claimsSet) throws IdentityOAuth2Exception {
-    
+
         Object rawActClaim = claimsSet.getClaim(ACT);
-        
+
         // No act claim = valid (no delegation)
         if (rawActClaim == null) {
             return null;
         }
-        
+
         // Act exists but wrong type = INVALID TOKEN
         if (!(rawActClaim instanceof Map)) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, 
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
                 "Invalid act claim: expected JSON object, got " + rawActClaim.getClass().getName());
         }
 
         Map<String, Object> actClaim = (Map<String, Object>) rawActClaim;
-        
+
         // Act exists but missing required 'sub' = INVALID TOKEN
         if (actClaim.get(SUB) == null) {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, 
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
                 "Invalid act claim: missing required 'sub' field as per RFC 8693");
         }
-        
+
         return actClaim;
     }
-    
+
     /**
      * Recursively extracts all actor subjects from a nested act claim chain.
      *
@@ -156,7 +156,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @return List of actor subjects in order from most recent to oldest
      */
     private List<String> extractActorChain(Map<String, Object> actClaim) {
-        
+
         List<String> actorChain = new ArrayList<>();
 
         if (actClaim == null) {
@@ -181,7 +181,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         return actorChain;
     }
-    
+
     /**
      * Validate the Token Exchange Grant.
      * Checks whether the token request satisfies the requirements to exchange the token.
@@ -209,6 +209,29 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         String tenantDomain = getTenantDomain(tokReqMsgCtx);
         SignedJWT subjectSignedJWT = getSignedJWT(requestParams.get(SUBJECT_TOKEN));
         JWTClaimsSet subjectClaimsSet = (subjectSignedJWT != null) ? getClaimSet(subjectSignedJWT) : null;
+        // Check for self-delegation first (application exchanging its own token without actor)
+        if (isSelfDelegationRequest(requestParams, tokReqMsgCtx, subjectClaimsSet)) {
+            validateSubjectTokenForSelfDelegation(tokReqMsgCtx, requestParams, tenantDomain, subjectSignedJWT, subjectClaimsSet);
+
+            Object existingActClaim = subjectClaimsSet.getClaim(ACT);
+
+            if (existingActClaim != null) {
+                // REMOVED: Authorization check - not needed for self-delegation
+                // In self-delegation, the token holder is refreshing their own token
+                // and should preserve the existing delegation chain
+
+                // Preserve existing act claim for self-delegation
+                tokReqMsgCtx.addProperty("IS_SELF_DELEGATION_WITH_ACT", true);
+                tokReqMsgCtx.addProperty("EXISTING_ACT_CLAIM", existingActClaim);
+            }
+
+            // No need to validate actor token in self-delegation
+            // Set impersonation flag to false for self-delegation
+            tokReqMsgCtx.setImpersonationRequest(false);
+            setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
+            return true;
+        }
+
         if (isImpersonationRequest(requestParams)) {
             validateSubjectToken(tokReqMsgCtx, requestParams, tenantDomain);
             validateActorToken(tokReqMsgCtx, requestParams, tenantDomain);
@@ -428,6 +451,139 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         tokReqMsgCtx.addProperty(IMPERSONATED_SUBJECT, subject);
         tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
+    }
+
+    /**
+     * Validates the subject token for self-delegation scenarios where an
+     * application
+     * is exchanging a token issued to itself. Unlike impersonation, self-delegation
+     * does not require a may_act claim.
+     *
+     * @param tokReqMsgCtx  OauthTokenReqMessageContext
+     * @param requestParams A Map<String, String> containing the request parameters.
+     * @param tenantDomain  The tenant domain associated with the request.
+     * @throws IdentityOAuth2Exception If there's an error during token validation.
+     */
+    private void validateSubjectTokenForSelfDelegation(OAuthTokenReqMessageContext tokReqMsgCtx, Map<String, String> requestParams, String tenantDomain, SignedJWT signedJWT,JWTClaimsSet claimsSet )
+            throws IdentityOAuth2Exception {
+
+        String subject = resolveSubject(claimsSet);
+        validateMandatoryClaims(claimsSet, subject);
+
+        // NOTE: We SKIP impersonator validation for self-delegation
+        // In self-delegation, there is no may_act claim because the application
+        // is exchanging its own token, not acting on behalf of another party
+
+        // Get JWT issuer
+        String jwtIssuer = claimsSet.getIssuer();
+
+        // Get identity provider
+        IdentityProvider identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
+
+        // Validate signature
+        try {
+            if (validateSignature(signedJWT, identityProvider, tenantDomain)) {
+                log.debug("Signature/MAC validated successfully for subject token.");
+            } else {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication "
+                        + "invalid for subject token.");
+            }
+        } catch (JOSEException e) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature for subject token ", e);
+        }
+
+        // Check JWT validity (expiration time, not before time, issued at time)
+        checkJWTValidity(claimsSet);
+
+        // Validate the audience of the subject token
+        List<String> audiences = claimsSet.getAudience();
+        if (audiences == null || audiences.isEmpty()) {
+            TokenExchangeUtils.handleClientException(TokenExchangeConstants.INVALID_TARGET,
+                    "Audience is empty in the subject token.");
+        }
+
+        // Check if issuer is in the audience list
+        String idpIssuerName = OAuth2Util.getIssuerLocation(tenantDomain);
+        boolean issuerInAudience = audiences.contains(idpIssuerName);
+
+        if (!issuerInAudience) {
+            // Fallback: Check if the issuer alias value is present in audience
+            String idpAlias = getIDPAlias(identityProvider, tenantDomain);
+            if (StringUtils.isNotEmpty(idpAlias)) {
+                issuerInAudience = audiences.stream().anyMatch(aud -> aud.equals(idpAlias));
+            }
+
+            // If still not found in audience, validate the iss claim as fallback
+            if (!issuerInAudience) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Issuer not found in audience list. Validating iss claim as fallback.");
+                }
+                validateTokenIssuer(jwtIssuer, tenantDomain);
+            }
+        }
+
+        // Validate that requesting client is in the audience list
+        if (!validateSubjectTokenAudience(audiences, tokReqMsgCtx)) {
+            TokenExchangeUtils.handleClientException(TokenExchangeConstants.INVALID_TARGET,
+                    "Requesting client not found in audience list for subject token.");
+        }
+
+        // Set subject property in context
+        tokReqMsgCtx.addProperty(IMPERSONATED_SUBJECT, subject);
+
+        // Set scopes
+        tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
+    }
+
+
+    /**
+     * Checks if the token request is a self-delegation request where an application
+     * is exchanging a token issued to itself, without requiring an actor token.
+     *
+     * @param requestParams A Map<String, String> containing the request parameters.
+     * @param tokReqMsgCtx  OAuthTokenReqMessageContext
+     * @return true if the request is a self-delegation request, false otherwise.
+     */
+    private boolean isSelfDelegationRequest(Map<String, String> requestParams, OAuthTokenReqMessageContext tokReqMsgCtx, JWTClaimsSet subjectClaimsSet) {
+
+        // Must have subject_token and subject_token_type
+        if (!requestParams.containsKey(SUBJECT_TOKEN) ||
+                !requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)) {
+            return false;
+        }
+
+        // Must NOT have actor_token (self-delegation doesn't need actor)
+        if (requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)) {
+            return false;
+        }
+
+        if (!requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN) ||
+                !requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)) {
+            return false;
+        }
+        if (requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)) {
+            return false;
+        }
+
+        if (subjectClaimsSet == null) {
+            return false;
+        }
+
+        String requestingClientId = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
+
+        // Check if the azp (authorized party) claim matches the requesting client
+        Object azpClaim = subjectClaimsSet.getClaim(TokenExchangeConstants.AZP);
+        if (azpClaim != null && azpClaim.toString().equals(requestingClientId)) {
+            return true;
+        }
+
+        // Check if the client_id claim matches the requesting client
+        Object clientIdClaim = subjectClaimsSet.getClaim(TokenExchangeConstants.CLIENT_ID);
+        if (clientIdClaim != null && clientIdClaim.toString().equals(requestingClientId)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
