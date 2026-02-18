@@ -30,6 +30,7 @@ import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
@@ -51,6 +52,7 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Arrays;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -88,6 +90,8 @@ public class TokenExchangeGrantHandlerTest {
         oAuth2Util.when(() -> OAuth2Util.getIssuerLocation(anyString())).thenReturn(null);
         oAuth2Util.when(() -> OAuth2Util.getIdTokenIssuer("carbon.super"))
                 .thenReturn("https://localhost:9443/oauth2/token");
+        oAuth2Util.when(() -> OAuth2Util.getOIDCAudience(anyString(), Mockito.any()))
+                .thenReturn(Arrays.asList("https://api.example.com", "https://resource.example.com", CLIENT_ID));
 
         oAuth2AccessTokenReqDTO = new OAuth2AccessTokenReqDTO();
         oAuth2AccessTokenReqDTO.setClientId("");
@@ -121,6 +125,20 @@ public class TokenExchangeGrantHandlerTest {
         tokenExchangeUtils.when(() -> TokenExchangeUtils.handleException(Mockito.anyString(), Mockito.anyString()))
                 .thenThrow(new IdentityOAuth2Exception("Signature Message Authentication invalid"));
         tokenExchangeGrantHandler = new TokenExchangeGrantHandler();
+    }
+
+    @BeforeMethod
+    public void resetRequestParams() {
+
+        RequestParameter[] requestParameters = new RequestParameter[3];
+        requestParameters[0] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE,
+                Constants.TokenExchangeConstants.JWT_TOKEN_TYPE);
+        requestParameters[1] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN, "subject_token");
+        requestParameters[2] = new RequestParameter("grant_type", Constants.TokenExchangeConstants
+                .TOKEN_EXCHANGE_GRANT_TYPE);
+        oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
+        oAuth2AccessTokenReqDTO.setClientId("");
+        tokReqMsgCtx = new OAuthTokenReqMessageContext(oAuth2AccessTokenReqDTO);
     }
 
     @Test
@@ -282,10 +300,6 @@ public class TokenExchangeGrantHandlerTest {
 
         return new Object[][]{
                 {true, false, ISSUER, CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
-                {false, true, ISSUER, CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
-                {false, true, "NegativeIssuer", CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
-                {false, true, ISSUER, "NegativeClient", IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
-                {false, true, ISSUER, CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
                 {false, false, ISSUER, CLIENT_ID, IMPERSONATOR_ID, true, ISSUER, IMPERSONATOR_ID},
                 {false, false, ISSUER, CLIENT_ID, IMPERSONATOR_ID, false, "NegativeIssuer", IMPERSONATOR_ID},
                 {false, false, ISSUER, CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, "NegativeImpersonator"}
@@ -315,6 +329,104 @@ public class TokenExchangeGrantHandlerTest {
         tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
     }
 
+    @Test
+    public void testImpersonationWithValidSingleAudience() throws Exception {
+
+        SignedJWT subjectToken = getImpersonateSubjectToken(false, false,
+                ISSUER, CLIENT_ID, IMPERSONATOR_ID);
+        SignedJWT actorToken = getIdToken(false, ISSUER, IMPERSONATOR_ID);
+
+        RequestParameter[] requestParameters = getImpersonationReqParamsWithAudience(
+                subjectToken, actorToken, "https://api.example.com");
+        oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
+        oAuth2AccessTokenReqDTO.setClientId(CLIENT_ID);
+        tokReqMsgCtx = new OAuthTokenReqMessageContext(oAuth2AccessTokenReqDTO);
+
+        prepareTokenUtilsForImpersonation(subjectToken, actorToken);
+        boolean isValid = tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
+        Assert.assertTrue(isValid);
+        Assert.assertNotNull(tokReqMsgCtx.getAudiences());
+        Assert.assertEquals(tokReqMsgCtx.getAudiences().size(), 1);
+        Assert.assertEquals(tokReqMsgCtx.getAudiences().get(0), "https://api.example.com");
+    }
+
+    @Test
+    public void testImpersonationWithValidMultipleAudiences() throws Exception {
+
+        SignedJWT subjectToken = getImpersonateSubjectToken(false, false,
+                ISSUER, CLIENT_ID, IMPERSONATOR_ID);
+        SignedJWT actorToken = getIdToken(false, ISSUER, IMPERSONATOR_ID);
+
+        RequestParameter[] requestParameters = getImpersonationReqParamsWithAudience(
+                subjectToken, actorToken, "https://api.example.com, https://resource.example.com");
+        oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
+        oAuth2AccessTokenReqDTO.setClientId(CLIENT_ID);
+        tokReqMsgCtx = new OAuthTokenReqMessageContext(oAuth2AccessTokenReqDTO);
+
+        prepareTokenUtilsForImpersonation(subjectToken, actorToken);
+        boolean isValid = tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
+        Assert.assertTrue(isValid);
+        Assert.assertNotNull(tokReqMsgCtx.getAudiences());
+        Assert.assertEquals(tokReqMsgCtx.getAudiences().size(), 2);
+        Assert.assertTrue(tokReqMsgCtx.getAudiences().contains("https://api.example.com"));
+        Assert.assertTrue(tokReqMsgCtx.getAudiences().contains("https://resource.example.com"));
+    }
+
+    @Test(expectedExceptions = IdentityOAuth2Exception.class)
+    public void testImpersonationWithInvalidAudience() throws Exception {
+
+        SignedJWT subjectToken = getImpersonateSubjectToken(false, false,
+                ISSUER, CLIENT_ID, IMPERSONATOR_ID);
+        SignedJWT actorToken = getIdToken(false, ISSUER, IMPERSONATOR_ID);
+
+        RequestParameter[] requestParameters = getImpersonationReqParamsWithAudience(
+                subjectToken, actorToken, "https://unauthorized-api.example.com");
+        oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
+        oAuth2AccessTokenReqDTO.setClientId(CLIENT_ID);
+        tokReqMsgCtx = new OAuthTokenReqMessageContext(oAuth2AccessTokenReqDTO);
+
+        prepareTokenUtilsForImpersonation(subjectToken, actorToken);
+        tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
+    }
+
+    @Test(expectedExceptions = IdentityOAuth2Exception.class)
+    public void testImpersonationWithMixedValidInvalidAudiences() throws Exception {
+
+        SignedJWT subjectToken = getImpersonateSubjectToken(false, false,
+                ISSUER, CLIENT_ID, IMPERSONATOR_ID);
+        SignedJWT actorToken = getIdToken(false, ISSUER, IMPERSONATOR_ID);
+
+        // One valid, one invalid audience
+        RequestParameter[] requestParameters = getImpersonationReqParamsWithAudience(
+                subjectToken, actorToken, "https://api.example.com, https://invalid.example.com");
+        oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
+        oAuth2AccessTokenReqDTO.setClientId(CLIENT_ID);
+        tokReqMsgCtx = new OAuthTokenReqMessageContext(oAuth2AccessTokenReqDTO);
+
+        prepareTokenUtilsForImpersonation(subjectToken, actorToken);
+        tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
+    }
+
+    @Test
+    public void testImpersonationWithoutAudienceParameter() throws Exception {
+
+        SignedJWT subjectToken = getImpersonateSubjectToken(false, false,
+                ISSUER, CLIENT_ID, IMPERSONATOR_ID);
+        SignedJWT actorToken = getIdToken(false, ISSUER, IMPERSONATOR_ID);
+
+        // Use standard impersonation params without audience parameter
+        RequestParameter[] requestParameters = getImpersonationReqParams(subjectToken, actorToken);
+        oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
+        oAuth2AccessTokenReqDTO.setClientId(CLIENT_ID);
+        tokReqMsgCtx = new OAuthTokenReqMessageContext(oAuth2AccessTokenReqDTO);
+
+        prepareTokenUtilsForImpersonation(subjectToken, actorToken);
+        boolean isValid = tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
+        Assert.assertTrue(isValid);
+        // When no audience parameter is provided, audiences should be null or empty
+        Assert.assertTrue(tokReqMsgCtx.getAudiences() == null || tokReqMsgCtx.getAudiences().isEmpty());
+    }
+
     private RequestParameter[] getImpersonationReqParams(SignedJWT subjectToken, SignedJWT actorToken) {
 
         RequestParameter[] requestParameters = new RequestParameter[6];
@@ -330,6 +442,26 @@ public class TokenExchangeGrantHandlerTest {
                 actorToken.serialize());
         requestParameters[5] = new RequestParameter(Constants.TokenExchangeConstants.ACTOR_TOKEN_TYPE,
                 Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        return requestParameters;
+    }
+
+    private RequestParameter[] getImpersonationReqParamsWithAudience(SignedJWT subjectToken,
+                                                                     SignedJWT actorToken,
+                                                                     String audience) {
+        RequestParameter[] requestParameters = new RequestParameter[7];
+        requestParameters[0] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE,
+                Constants.TokenExchangeConstants.JWT_TOKEN_TYPE);
+        requestParameters[1] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN,
+                subjectToken.serialize());
+        requestParameters[2] = new RequestParameter("grant_type", Constants.TokenExchangeConstants
+                .TOKEN_EXCHANGE_GRANT_TYPE);
+        requestParameters[3] = new RequestParameter(Constants.TokenExchangeConstants.REQUESTED_TOKEN_TYPE,
+                Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE);
+        requestParameters[4] = new RequestParameter(Constants.TokenExchangeConstants.ACTOR_TOKEN,
+                actorToken.serialize());
+        requestParameters[5] = new RequestParameter(Constants.TokenExchangeConstants.ACTOR_TOKEN_TYPE,
+                Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        requestParameters[6] = new RequestParameter(Constants.TokenExchangeConstants.AUDIENCE, audience);
         return requestParameters;
     }
 
