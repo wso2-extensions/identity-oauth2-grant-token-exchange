@@ -232,7 +232,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             return true;
         }
 
-        if (isImpersonationRequest(requestParams)) {
+        if (isImpersonationRequest(requestParams,subjectClaimsSet)) {
             validateSubjectToken(tokReqMsgCtx, requestParams, tenantDomain);
             validateActorToken(tokReqMsgCtx, requestParams, tenantDomain);
             // Set impersonation flag
@@ -297,13 +297,21 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @param requestParams A Map<String, String> containing the request parameters.
      * @return true if the request is an impersonation request and false otherwise.
      */
-    private boolean isImpersonationRequest(Map<String, String> requestParams) {
+    private boolean isImpersonationRequest(Map<String, String> requestParams, JWTClaimsSet subjectClaimsSet) {
 
         // Check if all required parameters are present
-        return requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN)
-                && requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)
-                && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)
-                && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
+        if (!requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN) ||
+                !requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE) ||
+                !requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN) ||
+                !requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE)) {
+            return false;
+        }
+
+        // For impersonation, the subject token MUST have may_act claim
+        if (subjectClaimsSet == null) {
+            return false;
+        }
+        return subjectClaimsSet.getClaim(MAY_ACT) != null;
     }
 
     /**
