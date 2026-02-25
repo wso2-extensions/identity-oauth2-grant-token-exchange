@@ -225,9 +225,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 tokReqMsgCtx.addProperty("EXISTING_ACT_CLAIM", existingActClaim);
             }
 
-            // No need to validate actor token in self-delegation
-            // Set impersonation flag to false for self-delegation
-            tokReqMsgCtx.setImpersonationRequest(false);
+            // No need to validate actor token in self-delegatin
             setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
             return true;
         }
@@ -246,14 +244,15 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             validateSubjectTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain, subjectSignedJWT, subjectClaimsSet);
             validateActorTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
             // Set impersonation flag to false for delegation
-            tokReqMsgCtx.setImpersonationRequest(false);
             tokReqMsgCtx.addProperty(IS_DELEGATION_REQUEST, true);
 
             // Extract and set actor subject from actor token
             SignedJWT actorSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
             JWTClaimsSet actorClaimsSet = getClaimSet(actorSignedJWT);
             String actorSubject = resolveSubject(actorClaimsSet);
-            log.debug("Processing delegation request with actor subject: " + actorSubject);
+            if (log.isDebugEnabled()) {
+                log.debug("Processing delegation request with actor subject: " + actorSubject);
+            }
             tokReqMsgCtx.addProperty(ACTOR_SUBJECT, actorSubject);
             Object actorAzpClaim = actorClaimsSet.getClaim(TokenExchangeConstants.AZP);
             if (actorAzpClaim != null) {
@@ -456,8 +455,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         // Validate the issuer of the subject token
         validateTokenIssuer(jwtIssuer, tenantDomain);
-
-        tokReqMsgCtx.addProperty(IMPERSONATED_SUBJECT, subject);
         tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
     }
 
@@ -535,9 +532,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             TokenExchangeUtils.handleClientException(TokenExchangeConstants.INVALID_TARGET,
                     "Requesting client not found in audience list for subject token.");
         }
-
-        // Set subject property in context
-        tokReqMsgCtx.addProperty(IMPERSONATED_SUBJECT, subject);
 
         // Set scopes
         tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
