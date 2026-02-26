@@ -243,7 +243,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         if (isDelegationRequest(requestParams, subjectClaimsSet)) {
             validateSubjectTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain, subjectSignedJWT, subjectClaimsSet);
             validateActorTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
-            // Set impersonation flag to false for delegation
             tokReqMsgCtx.addProperty(IS_DELEGATION_REQUEST, true);
 
             // Extract and set actor subject from actor token
