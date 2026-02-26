@@ -727,10 +727,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         String actorTokenSubject = resolveSubject(claimsSet);
         validateMandatoryClaims(claimsSet, actorTokenSubject);
 
-        // NOTE: For delegation, we skip the impersonator check since there's no may_act
-        // claim
-        // in the subject token. The actor is simply delegating on behalf of the
-        // subject.
 
         String jwtIssuer = claimsSet.getIssuer();
         IdentityProvider identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
