@@ -471,6 +471,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     public OAuth2AccessTokenRespDTO issue(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
 
         OAuth2AccessTokenRespDTO tokenRespDTO = super.issue(tokReqMsgCtx);
+        if (tokenRespDTO.isError()) {
+            return tokenRespDTO;
+        }
         AuthenticatedUser user = tokReqMsgCtx.getAuthorizedUser();
         Map<ClaimMapping, String> userAttributes = user.getUserAttributes();
         if (MapUtils.isNotEmpty(userAttributes)) {
