@@ -67,6 +67,7 @@ import java.util.ArrayList;
 
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.DELEGATING_ACTOR;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ORG_ID;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.MAY_ACT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUB;
@@ -748,7 +749,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         // Validate the issuer of the actor token
         validateTokenIssuer(jwtIssuer, tenantDomain);
 
-        tokReqMsgCtx.addProperty(IMPERSONATING_ACTOR, actorTokenSubject);
+        tokReqMsgCtx.addProperty(DELEGATING_ACTOR, actorTokenSubject);
     }
 
     private void validateTokenIssuer(String jwtIssuer, String tenantDomain) throws IdentityOAuth2Exception {
