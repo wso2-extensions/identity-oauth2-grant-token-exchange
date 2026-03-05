@@ -212,7 +212,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         JWTClaimsSet subjectClaimsSet = (subjectSignedJWT != null) ? getClaimSet(subjectSignedJWT) : null;
         // Check for self-delegation first (application exchanging its own token without actor)
         if (isSelfDelegationRequest(requestParams, tokReqMsgCtx, subjectClaimsSet)) {
-            validateSubjectTokenForSelfDelegation(tokReqMsgCtx, requestParams, tenantDomain, subjectSignedJWT, subjectClaimsSet);
+            validateSubjectTokenForSelfDelegation(tokReqMsgCtx, requestParams, tenantDomain, subjectSignedJWT,
+                    subjectClaimsSet);
 
             Object existingActClaim = subjectClaimsSet.getClaim(ACT);
 
@@ -242,7 +243,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         // Check for delegation (actor token provided, but no`may_act` claim in the subject token)
         if (isDelegationRequest(requestParams, subjectClaimsSet)) {
-            validateSubjectTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain, subjectSignedJWT, subjectClaimsSet);
+            validateSubjectTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain, subjectSignedJWT,
+                    subjectClaimsSet);
             validateActorTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
             tokReqMsgCtx.addProperty(IS_DELEGATION_REQUEST, true);
 
@@ -469,7 +471,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @param tenantDomain  The tenant domain associated with the request.
      * @throws IdentityOAuth2Exception If there's an error during token validation.
      */
-    private void validateSubjectTokenForSelfDelegation(OAuthTokenReqMessageContext tokReqMsgCtx, Map<String, String> requestParams, String tenantDomain, SignedJWT signedJWT,JWTClaimsSet claimsSet )
+    private void validateSubjectTokenForSelfDelegation(OAuthTokenReqMessageContext tokReqMsgCtx,
+                                                       Map<String, String> requestParams, String tenantDomain,
+                                                       SignedJWT signedJWT,JWTClaimsSet claimsSet )
             throws IdentityOAuth2Exception {
 
         String subject = resolveSubject(claimsSet);
