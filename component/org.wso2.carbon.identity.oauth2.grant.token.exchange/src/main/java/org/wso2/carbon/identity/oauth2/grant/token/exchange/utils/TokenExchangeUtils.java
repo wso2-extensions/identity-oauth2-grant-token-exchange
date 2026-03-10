@@ -87,8 +87,6 @@ import org.wso2.carbon.user.core.util.UserCoreUtil;
 import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
-import static org.wso2.carbon.utils.CarbonUtils.isLegacyAuditLogsDisabled;
-
 import java.security.PublicKey;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateExpiredException;
@@ -110,6 +108,7 @@ import javax.xml.namespace.QName;
 
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.DEFAULT_IDP_NAME;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.REGISTERED_CLAIMS;
+import static org.wso2.carbon.utils.CarbonUtils.isLegacyAuditLogsDisabled;
 
 /**
  * Util methods for Token Exchange Grant Type.
@@ -132,6 +131,7 @@ public class TokenExchangeUtils {
             return null;
         }
         try {
+            IdentityUtil.validateX5CLength(subjectToken);
             signedJWT = SignedJWT.parse(subjectToken);
         } catch (ParseException e) {
             throw new IdentityOAuth2Exception("Error while parsing the JWT", e);
@@ -318,8 +318,8 @@ public class TokenExchangeUtils {
      * @param idp          Identity provider who issued the signed JWT
      * @param tenantDomain Tenant Domain
      * @return true | false whether signature is valid or not
-     * @throws com.nimbusds.jose.JOSEException                         Error when verifying the signature of JWT
-     * @throws org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception Error when validating the signature of JWT
+     * @throws JOSEException             Error when verifying the signature of JWT
+     * @throws IdentityOAuth2Exception   Error when validating the signature of JWT
      */
     public static boolean validateSignature(SignedJWT signedJWT, IdentityProvider idp, String tenantDomain)
             throws JOSEException, IdentityOAuth2Exception {
@@ -350,8 +350,8 @@ public class TokenExchangeUtils {
             authenticatedUser = OAuth2Util.getUserFromUserName(authenticatedSubjectIdentifier);
             authenticatedUser.setAuthenticatedSubjectIdentifier(authenticatedSubjectIdentifier);
         } else {
-            authenticatedUser =
-                    AuthenticatedUser.createFederateAuthenticatedUserFromSubjectIdentifier(authenticatedSubjectIdentifier);
+            authenticatedUser = AuthenticatedUser
+                    .createFederateAuthenticatedUserFromSubjectIdentifier(authenticatedSubjectIdentifier);
             authenticatedUser.setUserName(authenticatedSubjectIdentifier);
         }
         authenticatedUser.setFederatedUser(true);
@@ -545,7 +545,8 @@ public class TokenExchangeUtils {
      * @return  Service provider.
      * @throws IdentityOAuth2Exception  Identity OAuth2 Exception.
      */
-    private static ServiceProvider getServiceProvider(OAuthTokenReqMessageContext tokenReqMsgCtx) throws IdentityOAuth2Exception {
+    private static ServiceProvider getServiceProvider(OAuthTokenReqMessageContext tokenReqMsgCtx)
+            throws IdentityOAuth2Exception {
 
         ServiceProvider serviceProvider;
         OAuthAppDO oAuthAppBean = (OAuthAppDO) tokenReqMsgCtx.getProperty(Constants.OAUTH_APP_DO_PROPERTY);
@@ -578,7 +579,8 @@ public class TokenExchangeUtils {
      * @return  true if the user is associated with the identity provider, false otherwise
      * @throws IdentityOAuth2Exception  Identity OAuth2 Exception.
      */
-    private static boolean isUserAssociated(User user, IdentityProvider idp, String subject) throws IdentityOAuth2Exception {
+    private static boolean isUserAssociated(User user, IdentityProvider idp, String subject)
+            throws IdentityOAuth2Exception {
 
         FederatedAssociationManager federatedAssociationManager =
                 TokenExchangeComponentServiceHolder.getInstance().getFederatedAssociationManager();
@@ -700,7 +702,7 @@ public class TokenExchangeUtils {
             }
 
             Object idPGroupsObj = claimsSet.getClaim(remoteClaimURIOfAppRoleClaim);
-            if (idPGroupsObj == null){
+            if (idPGroupsObj == null) {
                 if (log.isDebugEnabled()) {
                     log.debug("Claim " + remoteClaimURIOfAppRoleClaim + " not found in subject token.");
                 }
@@ -738,7 +740,8 @@ public class TokenExchangeUtils {
      * @return resident Identity Provider.
      * @throws IdentityOAuth2Exception Identity OAuth2 Exception.
      */
-    public static IdentityProvider getResidentIDPForIssuer(String tenantDomain, String jwtIssuer) throws IdentityOAuth2Exception {
+    public static IdentityProvider getResidentIDPForIssuer(String tenantDomain, String jwtIssuer)
+            throws IdentityOAuth2Exception {
 
         String issuer = StringUtils.EMPTY;
         IdentityProvider residentIdentityProvider;
@@ -1103,7 +1106,7 @@ public class TokenExchangeUtils {
         User user = null;
 
         try {
-            for (Map.Entry<String, String > claim : claims.entrySet()) {
+            for (Map.Entry<String, String> claim : claims.entrySet()) {
                 List<User> users = userStoreManager.getUserListWithID(claim.getKey(), claim.getValue(), null);
                     if (users.size() == 1) {
                         user = users.get(0);
@@ -1160,8 +1163,16 @@ public class TokenExchangeUtils {
                     if (claimMapping.getLocalClaim().getClaimUri().equals(lookupAttribute)) {
                         String mappedIdpClaim = claimMapping.getRemoteClaim().getClaimUri();
                         if (claimsSet.getClaim(mappedIdpClaim) != null) {
+                            Object claimValue;
+                            if (claimsSet.getClaim(mappedIdpClaim) instanceof List) {
+                                claimValue = IdentityUtil.convertToJSONArray((List) claimsSet.getClaim(mappedIdpClaim));
+                            } else if (claimsSet.getClaim(mappedIdpClaim) instanceof Map) {
+                                claimValue = IdentityUtil.convertToJSONObject((Map) claimsSet.getClaim(mappedIdpClaim));
+                            } else {
+                                claimValue = claimsSet.getClaim(mappedIdpClaim);
+                            }
                             localClaims.put(claimMapping.getLocalClaim().getClaimUri(),
-                                    claimsSet.getClaim(mappedIdpClaim).toString());
+                                    IdentityUtil.convertToJson(claimValue).toString());
                         }
                     }
                 }
@@ -1177,9 +1188,9 @@ public class TokenExchangeUtils {
                     if (ArrayUtils.contains(lookupAttributes, oidcClaim.getMappedLocalClaim()) &&
                             claimsSet.getClaim(oidcClaim.getClaimURI()) != null &&
                             !localClaims.containsKey(oidcClaim.getMappedLocalClaim())) {
+                        Object claimValue = claimsSet.getClaim(oidcClaim.getClaimURI());
                         localClaims.put(oidcClaim.getMappedLocalClaim(),
-                                claimsSet.getClaim(oidcClaim.getClaimURI()).toString());
-
+                                IdentityUtil.convertToJson(claimValue).toString());
                     }
                 }
             } catch (ClaimMetadataException e) {
