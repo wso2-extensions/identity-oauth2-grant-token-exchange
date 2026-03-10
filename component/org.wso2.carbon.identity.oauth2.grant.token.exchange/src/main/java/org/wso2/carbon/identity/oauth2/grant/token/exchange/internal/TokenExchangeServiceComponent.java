@@ -35,6 +35,9 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.TreeMap;
 
+/**
+ * Service component for Token Exchange grant type.
+ */
 @Component(name = "identity.oauth2.grant.token.exchange.component", immediate = true)
 public class TokenExchangeServiceComponent {
 

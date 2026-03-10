@@ -200,9 +200,9 @@ public class TokenExchangeGrantHandlerTest {
     @Test
     public void testValidateSubjectTokenExchange() throws Exception {
 
-        SignedJWT subjectToken = getImpersonateSubjectToken( false, false
-                , ISSUER, CLIENT_ID, IMPERSONATOR_ID );
-        SignedJWT actorToken = getIdToken(false, ISSUER, IMPERSONATOR_ID );
+        SignedJWT subjectToken = getImpersonateSubjectToken(false, false
+                , ISSUER, CLIENT_ID, IMPERSONATOR_ID);
+        SignedJWT actorToken = getIdToken(false, ISSUER, IMPERSONATOR_ID);
 
         RequestParameter[] requestParameters = getImpersonationReqParams(subjectToken, actorToken);
         oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
@@ -238,7 +238,7 @@ public class TokenExchangeGrantHandlerTest {
 
     private SignedJWT getImpersonateSubjectToken(boolean withoutMandatoryClaims,
                                                  boolean withoutImpersonator, String issuer, String audience,
-                                                 String impersonator ) throws NoSuchAlgorithmException, JOSEException {
+                                                 String impersonator) throws NoSuchAlgorithmException, JOSEException {
 
         KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
         KeyPair keyPair = keyGenerator.generateKeyPair();
@@ -257,7 +257,8 @@ public class TokenExchangeGrantHandlerTest {
                     .expirationTime(Date.from(Instant.ofEpochSecond(currentTime.getEpochSecond() + 36000)))
                     .notBeforeTime(Date.from(currentTime));
 
-        } if (!withoutImpersonator) {
+        }
+        if (!withoutImpersonator) {
             builder.claim("may_act", Collections.singletonMap("sub", impersonator));
         }
 
@@ -368,9 +369,9 @@ public class TokenExchangeGrantHandlerTest {
                                                              String impersonatorActorToken) throws Exception {
 
         SignedJWT subjectToken = getImpersonateSubjectToken(withoutMandatoryClaims, withoutImpersonator,
-                issuer, audience, impersonator );
+                issuer, audience, impersonator);
         SignedJWT actorToken = getIdToken(withoutMandatoryClaimsActorToken,
-                issuerActorToken, impersonatorActorToken );
+                issuerActorToken, impersonatorActorToken);
 
         RequestParameter[] requestParameters = getImpersonationReqParams(subjectToken, actorToken);
         oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
