@@ -550,18 +550,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @param tokReqMsgCtx  OAuthTokenReqMessageContext
      * @return true if the request is a self-delegation request, false otherwise.
      */
-    private boolean isSelfDelegationRequest(Map<String, String> requestParams, OAuthTokenReqMessageContext tokReqMsgCtx, JWTClaimsSet subjectClaimsSet) {
-
-        // Must have subject_token and subject_token_type
-        if (!requestParams.containsKey(SUBJECT_TOKEN) ||
-                !requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)) {
-            return false;
-        }
-
-        // Must NOT have actor_token (self-delegation doesn't need actor)
-        if (requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)) {
-            return false;
-        }
+    private boolean isSelfDelegationRequest(Map<String, String> requestParams, OAuthTokenReqMessageContext tokReqMsgCtx,
+                                            JWTClaimsSet subjectClaimsSet) {
 
         if (!requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN) ||
                 !requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)) {
