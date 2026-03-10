@@ -73,9 +73,9 @@ public class TokenExchangeGrantHandlerTest {
     private MockedStatic<OAuth2Util> oAuth2Util;
     private OAuth2AccessTokenReqDTO oAuth2AccessTokenReqDTO;
     private static final String IMPERSONATOR_ID = "8122e3de-0f3b-4b0e-a43a-d0c237451b7a";
-    private static final String IMPERSONATED_SUBJECT_ID ="d9982d93-4e73-4565-b7ac-3605e8d05f80";
-    private static final String ISSUER ="https://localhost:9443/oauth2/token";
-    private static final String CLIENT_ID ="7N7vQHZbJtPnzegtGXJvvwDL4wca0";
+    private static final String IMPERSONATED_SUBJECT_ID = "d9982d93-4e73-4565-b7ac-3605e8d05f80";
+    private static final String ISSUER = "https://localhost:9443/oauth2/token";
+    private static final String CLIENT_ID = "7N7vQHZbJtPnzegtGXJvvwDL4wca0";
     private static final String ACTOR_SUBJECT_ID = "f3a1b2c4-1111-4567-abcd-000000000001";
 
 
@@ -293,7 +293,7 @@ public class TokenExchangeGrantHandlerTest {
         return signedJwt;
     }
 
-    private SignedJWT getIdToken(boolean withoutMandatoryClaims, String issuer, String impersonator )
+    private SignedJWT getIdToken(boolean withoutMandatoryClaims, String issuer, String impersonator)
             throws NoSuchAlgorithmException, JOSEException {
 
         KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
@@ -394,7 +394,8 @@ public class TokenExchangeGrantHandlerTest {
         };
     }
 
-    @Test(dataProvider = "delegationNegativeTestData", expectedExceptions = IdentityOAuth2Exception.class, enabled = false)
+    @Test(dataProvider = "delegationNegativeTestData", expectedExceptions = IdentityOAuth2Exception.class, enabled =
+            false)
     public void testValidateDelegationRequestNegativeTest(boolean subjectWithoutMandatoryClaims,
                                                           String subjectIssuer,
                                                           String subjectAudience,

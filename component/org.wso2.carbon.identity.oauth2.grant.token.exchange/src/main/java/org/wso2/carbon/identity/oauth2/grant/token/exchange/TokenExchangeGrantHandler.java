@@ -54,6 +54,7 @@ import org.wso2.carbon.user.core.listener.UserOperationEventListener;
 import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -62,21 +63,20 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.ArrayList;
 
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACT;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACTOR_AZP;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACTOR_SUBJECT;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.DELEGATING_ACTOR;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.EXISTING_ACT_CLAIM;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
-import static org.wso2.carbon.identity.oauth.common.OAuthConstants.DELEGATING_ACTOR;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.IS_DELEGATION_REQUEST;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ORG_ID;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.MAY_ACT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUB;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.USER_ORG;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.EXISTING_ACT_CLAIM;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUBJECT_TOKEN;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.IS_DELEGATION_REQUEST;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACTOR_AZP;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACTOR_SUBJECT;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkExpirationTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkNotBeforeTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getClaimSet;
@@ -231,7 +231,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             return true;
         }
 
-        if (isImpersonationRequest(requestParams,subjectClaimsSet)) {
+        if (isImpersonationRequest(requestParams, subjectClaimsSet)) {
             validateSubjectToken(tokReqMsgCtx, requestParams, tenantDomain);
             validateActorToken(tokReqMsgCtx, requestParams, tenantDomain);
             // Set impersonation flag
@@ -322,7 +322,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @param requestParams request parameter map.
      * @return true if the request is a delegation request and false otherwise.
      */
-    private boolean isDelegationRequest(Map<String, String> requestParams, JWTClaimsSet subjectClaimsSet){
+    private boolean isDelegationRequest(Map<String, String> requestParams, JWTClaimsSet subjectClaimsSet) {
 
         // Check if all required parameters are present
         if (!requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN) ||
@@ -472,7 +472,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      */
     private void validateSubjectTokenForSelfDelegation(OAuthTokenReqMessageContext tokReqMsgCtx,
                                                        Map<String, String> requestParams, String tenantDomain,
-                                                       SignedJWT signedJWT,JWTClaimsSet claimsSet )
+                                                       SignedJWT signedJWT, JWTClaimsSet claimsSet)
             throws IdentityOAuth2Exception {
 
         String subject = resolveSubject(claimsSet);
@@ -565,12 +565,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         String requestingClientId = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
-
-        // Check if the azp (authorized party) claim matches the requesting client
-        Object azpClaim = subjectClaimsSet.getClaim(TokenExchangeConstants.AZP);
-        if (azpClaim != null && azpClaim.toString().equals(requestingClientId)) {
-            return true;
-        }
 
         // Check if the client_id claim matches the requesting client
         Object clientIdClaim = subjectClaimsSet.getClaim(TokenExchangeConstants.CLIENT_ID);
