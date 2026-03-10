@@ -5,7 +5,12 @@ You can exchange external Identity Provider's token for the token issued by Iden
 
 ## How to test Token Exchange Grant Type:
 
-* Download and build the project by executing `maven clean install`
+* Clone the repository and build the project.
+
+```bash
+maven clean install
+```
+
 * Copy the `grant.token.exchange-1.0.0.jar` into <Carbon-Home>/repository/components/dropins directory
 * Add the following configurations to deployment.toml to enable this grant type:
 ```toml
