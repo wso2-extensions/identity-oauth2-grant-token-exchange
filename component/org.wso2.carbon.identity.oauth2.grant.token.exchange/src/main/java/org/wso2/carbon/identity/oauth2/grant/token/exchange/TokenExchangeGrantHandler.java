@@ -226,7 +226,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 tokReqMsgCtx.addProperty("EXISTING_ACT_CLAIM", existingActClaim);
             }
 
-            // No need to validate actor token in self-delegatin
+            // No need to validate actor token in self-delegation
             setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
             return true;
         }
