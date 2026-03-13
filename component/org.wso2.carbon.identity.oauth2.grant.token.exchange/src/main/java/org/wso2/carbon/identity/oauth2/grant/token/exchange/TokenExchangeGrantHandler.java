@@ -65,13 +65,13 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACT;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACTOR_AZP;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACTOR_SUBJECT;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACTOR_AZP;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACTOR_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.DELEGATING_ACTOR;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.EXISTING_ACT_CLAIM;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.EXISTING_ACT_CLAIM;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.IS_DELEGATION_REQUEST;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IS_DELEGATION_REQUEST;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ORG_ID;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.MAY_ACT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUB;
@@ -210,31 +210,34 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         SignedJWT subjectSignedJWT = getSignedJWT(requestParams.get(SUBJECT_TOKEN));
         JWTClaimsSet subjectClaimsSet = (subjectSignedJWT != null) ? getClaimSet(subjectSignedJWT) : null;
 
+        // Patch marker: confirms this version of TokenExchangeGrantHandler is active.
+        log.info("[TokenExchangeGrantHandler] validateGrant invoked for client: "
+                + tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId());
+
         if (isImpersonationRequest(requestParams, subjectClaimsSet)) {
+            // Impersonation: subject token has may_act, actor token is present and pre-authorized.
             validateSubjectToken(tokReqMsgCtx, requestParams, tenantDomain);
             validateActorToken(tokReqMsgCtx, requestParams, tenantDomain);
-            // Set impersonation flag
             tokReqMsgCtx.setImpersonationRequest(true);
             setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
             return true;
-        }
 
-        // Check for delegation (actor token provided, or self-delegation where the subject
-        // token was originally issued to the requesting application)
-        if (isDelegationRequest(requestParams, subjectClaimsSet, tokReqMsgCtx)) {
+        } else if (isDelegationRequest(requestParams, subjectClaimsSet, tokReqMsgCtx)) {
+            // Delegation (standard or self): subject token has no may_act.
+            // IS_DELEGATION_REQUEST is set here using OAuthConstants so JWTTokenIssuer
+            // reads the exact same property key and builds the act claim correctly.
             validateSubjectTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain, subjectSignedJWT,
                     subjectClaimsSet);
             tokReqMsgCtx.addProperty(IS_DELEGATION_REQUEST, true);
 
-            // Detect self-delegation: no actor token, and the subject token's client_id AND sub
-            // both match the requesting client ID (confirming the application is both the issuing
-            // target and the principal of the token — as in a client credentials context).
+            // Detect self-delegation: no actor token, and the subject token was issued to the
+            // requesting client (azp == currentClientId). The 'sub' may be a user UUID
+            // (APPLICATION_USER flow) or the client itself (client-credentials flow) — we do
+            // NOT require sub == clientId here, because that would exclude user-delegated tokens.
             String currentClientId = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
-            Object clientIdClaim = subjectClaimsSet.getClaim(TokenExchangeConstants.CLIENT_ID);
-            String subClaim = resolveSubject(subjectClaimsSet);
-            boolean isSelfDelegation = clientIdClaim != null
-                    && clientIdClaim.toString().equals(currentClientId)
-                    && currentClientId.equals(subClaim)
+            String tokenClientId = resolveTokenClientId(subjectClaimsSet);
+            boolean isSelfDelegation = tokenClientId != null
+                    && tokenClientId.equals(currentClientId)
                     && !requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN);
 
             if (isSelfDelegation) {
@@ -244,14 +247,13 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                     log.debug("Processing self-delegation request. Current application '" + currentClientId
                             + "' is implicitly acting as the actor.");
                 }
-                // Populate DELEGATING_ACTOR and ACTOR_SUBJECT with the current application's client ID.
-                // Also set ACTOR_AZP to mirror what standard delegation extracts from the actor token,
-                // ensuring the act claim in the issued token is consistent across both delegation paths.
+                // Populate DELEGATING_ACTOR, ACTOR_SUBJECT, and ACTOR_AZP with the current
+                // application's client ID — mirrors what standard delegation extracts from the actor token.
                 tokReqMsgCtx.addProperty(DELEGATING_ACTOR, currentClientId);
                 tokReqMsgCtx.addProperty(ACTOR_SUBJECT, currentClientId);
                 tokReqMsgCtx.addProperty(ACTOR_AZP, currentClientId);
             } else {
-                // Standard delegation: actor token is required; extract subject from it.
+                // Standard delegation: actor token is required; validate and extract subject from it.
                 validateActorTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
 
                 SignedJWT actorSignedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
@@ -273,7 +275,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             Map<String, Object> existingActClaim = extractActClaim(subjectClaimsSet);
             if (existingActClaim != null) {
                 tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
-
                 if (log.isDebugEnabled()) {
                     List<String> existingActorChain = extractActorChain(existingActClaim);
                     log.debug("Found existing act claim chain: " + existingActorChain);
@@ -281,19 +282,22 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             }
             setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
             return true;
-        }
-        validateRequestedTokenType(requestedTokenType);
 
-        if (Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(subjectTokenType) || (Constants
-                .TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType)) && isJWT(requestParams
-                .get(Constants.TokenExchangeConstants.SUBJECT_TOKEN))) {
-            handleJWTSubjectToken(requestParams, tokReqMsgCtx, tenantDomain, requestedAudience);
-            if (tokReqMsgCtx.getAuthorizedUser() != null && !tokReqMsgCtx.getAuthorizedUser().isFederatedUser()) {
-                validateLocalUser(tokReqMsgCtx, requestParams);
-            }
         } else {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
-                    "Unsupported subject token type : " + subjectTokenType + " provided");
+            // Generic JWT token exchange: neither impersonation nor delegation.
+            validateRequestedTokenType(requestedTokenType);
+
+            if (Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(subjectTokenType) || (Constants
+                    .TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType)) && isJWT(requestParams
+                    .get(Constants.TokenExchangeConstants.SUBJECT_TOKEN))) {
+                handleJWTSubjectToken(requestParams, tokReqMsgCtx, tenantDomain, requestedAudience);
+                if (tokReqMsgCtx.getAuthorizedUser() != null && !tokReqMsgCtx.getAuthorizedUser().isFederatedUser()) {
+                    validateLocalUser(tokReqMsgCtx, requestParams);
+                }
+            } else {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                        "Unsupported subject token type : " + subjectTokenType + " provided");
+            }
         }
         return true;
     }
@@ -360,14 +364,31 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             return true;
         }
 
-        // Self-delegation: no actor token, and subject token's client_id AND sub both equal the
-        // requesting client ID (application is both the issuing target and the principal).
+        // Self-delegation: no actor token, and the subject token was issued to the requesting
+        // client (azp == currentClientId). The sub may be a user UUID (APPLICATION_USER) or the
+        // client itself (CC token) — sub == clientId is NOT required here.
         String currentClientId = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
-        Object clientIdClaim = subjectClaimsSet.getClaim(TokenExchangeConstants.CLIENT_ID);
-        String subClaim = resolveSubject(subjectClaimsSet);
-        return clientIdClaim != null
-                && clientIdClaim.toString().equals(currentClientId)
-                && currentClientId.equals(subClaim);
+        String tokenClientId = resolveTokenClientId(subjectClaimsSet);
+        return tokenClientId != null && tokenClientId.equals(currentClientId);
+    }
+
+    /**
+     * Resolves the client identifier from a JWT claims set.
+     * Checks the 'azp' (authorized party) claim first — which is how WSO2 IS stamps the
+     * issuing client on JWT access tokens — and falls back to the 'client_id' claim for
+     * tokens from other issuers.
+     *
+     * @param claimsSet JWT claims to inspect.
+     * @return the client identifier string, or {@code null} if neither claim is present.
+     */
+    private String resolveTokenClientId(JWTClaimsSet claimsSet) {
+
+        Object azp = claimsSet.getClaim(TokenExchangeConstants.AZP);
+        if (azp != null) {
+            return azp.toString();
+        }
+        Object clientId = claimsSet.getClaim(TokenExchangeConstants.CLIENT_ID);
+        return clientId != null ? clientId.toString() : null;
     }
 
     /**
