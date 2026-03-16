@@ -25,6 +25,9 @@ import org.wso2.carbon.user.core.service.RealmService;
 
 import java.util.Map;
 
+/**
+ * Holder class for Token Exchange component services.
+ */
 public class TokenExchangeComponentServiceHolder {
 
     private static final TokenExchangeComponentServiceHolder INSTANCE = new TokenExchangeComponentServiceHolder();
