@@ -447,10 +447,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         // Validate the audience of the subject token
         List<String> audiences = claimsSet.getAudience();
-
-
-        validateSubjectTokenIssuerInAudience(audiences, jwtIssuer, identityProvider, tenantDomain);
-
         if (!validateSubjectTokenAudience(audiences, tokReqMsgCtx)) {
             TokenExchangeUtils.handleClientException(TokenExchangeConstants.INVALID_TARGET,
                     "Invalid audience values provided for subject token.");
@@ -463,7 +459,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
     }
 
-        /**
+    /**
      * Validates the subject token for delegation scenarios.
      * Unlike impersonation, delegation does NOT require a may_act claim in the
      * subject token.
@@ -505,41 +501,15 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         // Validate the audience of the subject token
         List<String> audiences = claimsSet.getAudience();
-
-        validateSubjectTokenIssuerInAudience(audiences, jwtIssuer, identityProvider, tenantDomain);
-
-        // Validate that requesting client is in the audience list
         if (!validateSubjectTokenAudience(audiences, tokReqMsgCtx)) {
             TokenExchangeUtils.handleClientException(TokenExchangeConstants.INVALID_TARGET,
                     "Invalid audience values provided for subject token.");
         }
 
-        tokReqMsgCtx.addProperty(IMPERSONATED_SUBJECT, subject);
+        // Validate the issuer of the subject token
+        validateTokenIssuer(jwtIssuer, tenantDomain);
         tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
     }
-
-    private void validateSubjectTokenIssuerInAudience(List<String> audiences, String jwtIssuer,
-                                                      IdentityProvider identityProvider, String tenantDomain)
-            throws IdentityOAuth2Exception {
-
-        String idpIssuerName = OAuth2Util.getIssuerLocation(tenantDomain);
-        boolean issuerInAudience = audiences != null && audiences.contains(idpIssuerName);
-
-        if (!issuerInAudience) {
-            String idpAlias = getIDPAlias(identityProvider, tenantDomain);
-            if (StringUtils.isNotEmpty(idpAlias)) {
-                issuerInAudience = audiences.stream().anyMatch(aud -> aud.equals(idpAlias));
-            }
-
-            if (!issuerInAudience) {
-                if (log.isDebugEnabled()) {
-                    log.debug("Issuer not found in audience list. Validating iss claim as fallback.");
-                }
-                validateTokenIssuer(jwtIssuer, tenantDomain);
-            }
-        }
-    }
-
 
 
 
