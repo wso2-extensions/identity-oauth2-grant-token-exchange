@@ -210,10 +210,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         SignedJWT subjectSignedJWT = getSignedJWT(requestParams.get(SUBJECT_TOKEN));
         JWTClaimsSet subjectClaimsSet = (subjectSignedJWT != null) ? getClaimSet(subjectSignedJWT) : null;
 
-        // Patch marker: confirms this version of TokenExchangeGrantHandler is active.
-        log.info("[TokenExchangeGrantHandler] validateGrant invoked for client: "
-                + tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId());
-
         if (isImpersonationRequest(requestParams, subjectClaimsSet)) {
             // Impersonation: subject token has may_act, actor token is present and pre-authorized.
             validateSubjectToken(tokReqMsgCtx, requestParams, tenantDomain);
