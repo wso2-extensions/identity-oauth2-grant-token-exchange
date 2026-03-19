@@ -940,7 +940,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     }
 
     /**
-     * Default implementation to get IDP from the issuer name in a specific tenant
+     * Default implementation to get IDP from the issuer name in a specific tenant.
      *
      * @param tokReqMsgCtx OAuthTokenReqMessageContext to extract more information
      * @param jwtIssuer    issuer of the IDP
