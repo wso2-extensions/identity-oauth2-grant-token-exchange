@@ -65,6 +65,7 @@ import static org.wso2.carbon.identity.oauth.common.OAuthConstants.EXISTING_ACT_
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IS_DELEGATION_REQUEST;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.SUBJECT_TOKEN;
 
 /**
  * Unit tests for {@link TokenExchangeGrantHandler}.
@@ -109,7 +110,7 @@ public class TokenExchangeGrantHandlerTest {
         RequestParameter[] requestParameters = new RequestParameter[3];
         requestParameters[0] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE,
                 Constants.TokenExchangeConstants.JWT_TOKEN_TYPE);
-        requestParameters[1] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN, "subject_token");
+        requestParameters[1] = new RequestParameter(SUBJECT_TOKEN, "subject_token");
         requestParameters[2] = new RequestParameter("grant_type", Constants.TokenExchangeConstants
                 .TOKEN_EXCHANGE_GRANT_TYPE);
         oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
@@ -332,7 +333,7 @@ public class TokenExchangeGrantHandlerTest {
         RequestParameter[] requestParameters = new RequestParameter[6];
         requestParameters[0] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE,
                 Constants.TokenExchangeConstants.JWT_TOKEN_TYPE);
-        requestParameters[1] = new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN,
+        requestParameters[1] = new RequestParameter(SUBJECT_TOKEN,
                 subjectToken.serialize());
         requestParameters[2] = new RequestParameter("grant_type", Constants.TokenExchangeConstants
                 .TOKEN_EXCHANGE_GRANT_TYPE);
@@ -567,7 +568,7 @@ public class TokenExchangeGrantHandlerTest {
         return new RequestParameter[]{
                 new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE,
                         Constants.TokenExchangeConstants.JWT_TOKEN_TYPE),
-                new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN, subjectToken.serialize()),
+                new RequestParameter(SUBJECT_TOKEN, subjectToken.serialize()),
                 new RequestParameter("grant_type", Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE),
                 new RequestParameter(Constants.TokenExchangeConstants.REQUESTED_TOKEN_TYPE,
                         Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE),
@@ -582,7 +583,7 @@ public class TokenExchangeGrantHandlerTest {
         return new RequestParameter[]{
                 new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE,
                         Constants.TokenExchangeConstants.JWT_TOKEN_TYPE),
-                new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN, subjectToken.serialize()),
+                new RequestParameter(SUBJECT_TOKEN, subjectToken.serialize()),
                 new RequestParameter("grant_type", Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE),
                 new RequestParameter(Constants.TokenExchangeConstants.REQUESTED_TOKEN_TYPE,
                         Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE),

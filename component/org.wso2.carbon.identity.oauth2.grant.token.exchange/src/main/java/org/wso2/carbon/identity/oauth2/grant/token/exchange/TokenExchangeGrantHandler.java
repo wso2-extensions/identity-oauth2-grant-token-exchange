@@ -64,6 +64,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACTOR_AZP;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACTOR_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.DELEGATING_ACTOR;
@@ -71,11 +72,12 @@ import static org.wso2.carbon.identity.oauth.common.OAuthConstants.EXISTING_ACT_
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IS_DELEGATION_REQUEST;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.MAY_ACT;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OIDCClaims.AZP;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OIDCClaims.CLIENT_ID;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ORG_ID;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ACT;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.MAY_ACT;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUB;
-import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUBJECT_TOKEN;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.SUB;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.SUBJECT_TOKEN;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.USER_ORG;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkExpirationTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkNotBeforeTime;
@@ -259,7 +261,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                     log.debug("Processing delegation request with actor subject: " + actorSubject);
                 }
                 tokReqMsgCtx.addProperty(ACTOR_SUBJECT, actorSubject);
-                Object actorAzpClaim = actorClaimsSet.getClaim(TokenExchangeConstants.AZP);
+                Object actorAzpClaim = actorClaimsSet.getClaim(AZP);
                 if (actorAzpClaim != null) {
                     tokReqMsgCtx.addProperty(ACTOR_AZP, actorAzpClaim.toString());
                     if (log.isDebugEnabled()) {
@@ -285,7 +287,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
             if (Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(subjectTokenType) || (Constants
                     .TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType)) && isJWT(requestParams
-                    .get(Constants.TokenExchangeConstants.SUBJECT_TOKEN))) {
+                    .get(SUBJECT_TOKEN))) {
                 handleJWTSubjectToken(requestParams, tokReqMsgCtx, tenantDomain, requestedAudience);
                 if (tokReqMsgCtx.getAuthorizedUser() != null && !tokReqMsgCtx.getAuthorizedUser().isFederatedUser()) {
                     validateLocalUser(tokReqMsgCtx, requestParams);
@@ -307,7 +309,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private boolean isImpersonationRequest(Map<String, String> requestParams, JWTClaimsSet subjectClaimsSet) {
 
         // Check if all required parameters are present
-        if (!requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN) ||
+        if (!requestParams.containsKey(SUBJECT_TOKEN) ||
                 !requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE) ||
                 !requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN) ||
                 !requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE)) {
@@ -340,7 +342,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private boolean isDelegationRequest(Map<String, String> requestParams, JWTClaimsSet subjectClaimsSet,
                                         OAuthTokenReqMessageContext tokReqMsgCtx) {
 
-        if (!requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN) ||
+        if (!requestParams.containsKey(SUBJECT_TOKEN) ||
                 !requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)) {
             return false;
         }
@@ -379,11 +381,11 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      */
     private String resolveTokenClientId(JWTClaimsSet claimsSet) {
 
-        Object azp = claimsSet.getClaim(TokenExchangeConstants.AZP);
+        Object azp = claimsSet.getClaim(AZP);
         if (azp != null) {
             return azp.toString();
         }
-        Object clientId = claimsSet.getClaim(TokenExchangeConstants.CLIENT_ID);
+        Object clientId = claimsSet.getClaim(CLIENT_ID);
         return clientId != null ? clientId.toString() : null;
     }
 
@@ -402,7 +404,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             throws IdentityOAuth2Exception {
 
         // Retrieve the signed JWT object from the request parameters
-        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
+        SignedJWT signedJWT = getSignedJWT(requestParams.get(SUBJECT_TOKEN));
         if (signedJWT == null) {
             // If no valid subject token found, handle the exception
             handleException(OAuth2ErrorCodes.INVALID_REQUEST,
@@ -703,7 +705,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                                             Map<String, String> requestParams,
                                             String tenantDomain) throws IdentityOAuth2Exception {
 
-        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
+        SignedJWT signedJWT = getSignedJWT(requestParams.get(SUBJECT_TOKEN));
 
         JWTClaimsSet claimsSet = getClaimSet(signedJWT);
         String jwtIssuer = claimsSet.getIssuer();
@@ -981,7 +983,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         JWTClaimsSet claimsSet;
         boolean audienceFound;
 
-        signedJWT = getSignedJWT(requestParams.get(Constants.TokenExchangeConstants.SUBJECT_TOKEN));
+        signedJWT = getSignedJWT(requestParams.get(SUBJECT_TOKEN));
         if (signedJWT != null) {
             claimsSet = getClaimSet(signedJWT);
             if (claimsSet == null) {
