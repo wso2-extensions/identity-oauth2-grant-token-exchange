@@ -26,6 +26,7 @@ import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.wso2.carbon.context.PrivilegedCarbonContext;
 import org.wso2.carbon.identity.application.authentication.framework.exception.UserIdNotFoundException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.common.model.ClaimMapping;
@@ -469,8 +470,19 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     @Override
     public OAuth2AccessTokenRespDTO issue(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
 
-        OAuth2AccessTokenRespDTO tokenRespDTO = super.issue(tokReqMsgCtx);
         AuthenticatedUser user = tokReqMsgCtx.getAuthorizedUser();
+        String appResidentOrganizationId = PrivilegedCarbonContext.getThreadLocalCarbonContext().
+                getApplicationResidentOrganizationId();
+        if (!tokReqMsgCtx.isImpersonationRequest() && user != null &&
+                StringUtils.isNotBlank(appResidentOrganizationId)) {
+            if (StringUtils.isBlank(user.getAccessingOrganization())) {
+                user.setAccessingOrganization(appResidentOrganizationId);
+            }
+            if (StringUtils.isBlank(user.getUserResidentOrganization())) {
+                user.setUserResidentOrganization(appResidentOrganizationId);
+            }
+        }
+        OAuth2AccessTokenRespDTO tokenRespDTO = super.issue(tokReqMsgCtx);
         Map<ClaimMapping, String> userAttributes = user.getUserAttributes();
         if (MapUtils.isNotEmpty(userAttributes)) {
             ClaimsUtil.addUserAttributesToCache(tokenRespDTO, tokReqMsgCtx, userAttributes);
