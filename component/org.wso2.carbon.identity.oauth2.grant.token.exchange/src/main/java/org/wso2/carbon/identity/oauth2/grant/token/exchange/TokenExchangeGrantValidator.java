@@ -20,6 +20,7 @@ package org.wso2.carbon.identity.oauth2.grant.token.exchange;
 
 import org.apache.oltu.oauth2.common.OAuth;
 import org.apache.oltu.oauth2.common.validators.AbstractValidator;
+import org.wso2.carbon.identity.oauth.common.OAuthConstants;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -33,7 +34,7 @@ public class TokenExchangeGrantValidator extends AbstractValidator<HttpServletRe
     public TokenExchangeGrantValidator() {
 
         requiredParams.add(OAuth.OAUTH_GRANT_TYPE);
-        requiredParams.add(Constants.TokenExchangeConstants.SUBJECT_TOKEN);
+        requiredParams.add(OAuthConstants.SUBJECT_TOKEN);
         requiredParams.add(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE);
     }
 }
