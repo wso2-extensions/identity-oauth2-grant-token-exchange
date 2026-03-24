@@ -37,6 +37,7 @@ import org.wso2.carbon.identity.event.IdentityEventException;
 import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLockException;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
+import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenRespDTO;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants;
@@ -91,9 +92,8 @@ import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenEx
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.setAuthorizedUserForImpersonation;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateIssuedAtTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.validateSignature;
-import static org.wso2.carbon.identity.oauth2.util.OAuth2Util.isJWT;
 import static org.wso2.carbon.identity.oauth2.token.AccessTokenIssuer.OAUTH_APP_DO;
-import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
+import static org.wso2.carbon.identity.oauth2.util.OAuth2Util.isJWT;
 
 /**
  * Class to handle Token Exchange grant type.
@@ -358,8 +358,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         for (String requestedAud : requestedAudiences) {
             if (!allowedAudiences.contains(requestedAud)) {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST,
-                        "Requested audience '" + requestedAud + "' is not allowed for this application. " +
-                                "Allowed audiences: " + String.join(", ", allowedAudiences));
+                        "Requested audience '" + requestedAud + "' is not allowed for this application. ");
             }
         }
 
