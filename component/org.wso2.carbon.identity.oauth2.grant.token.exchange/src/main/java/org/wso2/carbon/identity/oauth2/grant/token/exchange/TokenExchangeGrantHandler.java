@@ -504,8 +504,24 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                     "Invalid audience values provided for subject token.");
         }
 
-        // Validate the issuer of the subject token
-        validateTokenIssuer(jwtIssuer, tenantDomain);
+        // Validate that the token was issued by the local IdP.
+        // First check if the IdP issuer name or alias is explicitly listed in the audience claim.
+        // If neither is present, fall back to validating the iss claim directly.
+        String idpIssuerName = OAuth2Util.getIssuerLocation(tenantDomain);
+        boolean issuerInAudience = audiences != null && audiences.contains(idpIssuerName);
+
+        if (!issuerInAudience) {
+            String idpAlias = getIDPAlias(identityProvider, tenantDomain);
+            if (StringUtils.isNotEmpty(idpAlias)) {
+                issuerInAudience = audiences != null && audiences.stream().anyMatch(aud -> aud.equals(idpAlias));
+            }
+            if (!issuerInAudience) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Issuer not found in audience list. Validating iss claim as fallback.");
+                }
+                validateTokenIssuer(jwtIssuer, tenantDomain);
+            }
+        }
         tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
     }
 

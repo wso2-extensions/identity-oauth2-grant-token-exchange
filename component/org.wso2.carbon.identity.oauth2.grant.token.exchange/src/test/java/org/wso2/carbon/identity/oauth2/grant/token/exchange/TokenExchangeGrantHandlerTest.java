@@ -492,6 +492,70 @@ public class TokenExchangeGrantHandlerTest {
         tokenExchangeGrantHandler.validateGrant(ctx);
     }
 
+    @Test
+    public void testValidateDelegationWhenIdpAliasInSubjectTokenAudience() throws Exception {
+
+        KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
+        KeyPair keyPair = keyGenerator.generateKeyPair();
+        Instant now = Instant.now();
+        // Audience is the IDP alias — issuer location is null so the alias fallback is exercised.
+        JWTClaimsSet claims = new JWTClaimsSet.Builder()
+                .issuer(ISSUER)
+                .subject(IMPERSONATED_SUBJECT_ID)
+                .audience("7N7vQHZbJtPnzegtGXJvvwDL4wca")
+                .issueTime(Date.from(now))
+                .expirationTime(Date.from(Instant.ofEpochSecond(now.getEpochSecond() + 36000)))
+                .notBeforeTime(Date.from(now))
+                .claim(AZP, CLIENT_ID)
+                .claim(SCOPE, "default")
+                .build();
+        SignedJWT subjectToken = signJWT(keyPair, claims);
+
+        OAuth2AccessTokenReqDTO reqDTO = new OAuth2AccessTokenReqDTO();
+        reqDTO.setClientId(CLIENT_ID);
+        reqDTO.setGrantType(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        reqDTO.setTenantDomain("carbon.super");
+        reqDTO.setScope(new String[]{"default"});
+        reqDTO.setRequestParameters(buildSelfDelegationRequestParams(subjectToken));
+        OAuthTokenReqMessageContext ctx = new OAuthTokenReqMessageContext(reqDTO);
+
+        prepareTokenUtilsForSelfDelegation(subjectToken);
+        Assert.assertTrue(tokenExchangeGrantHandler.validateGrant(ctx));
+    }
+
+    @Test
+    public void testValidateDelegationWhenIssuerLocationInSubjectTokenAudience() throws Exception {
+
+        oAuth2Util.when(() -> OAuth2Util.getIssuerLocation("carbon.super")).thenReturn(ISSUER);
+
+        KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
+        KeyPair keyPair = keyGenerator.generateKeyPair();
+        Instant now = Instant.now();
+        // Audience is the IDP issuer location — the first check in the new logic should pass.
+        JWTClaimsSet claims = new JWTClaimsSet.Builder()
+                .issuer(ISSUER)
+                .subject(IMPERSONATED_SUBJECT_ID)
+                .audience(ISSUER)
+                .issueTime(Date.from(now))
+                .expirationTime(Date.from(Instant.ofEpochSecond(now.getEpochSecond() + 36000)))
+                .notBeforeTime(Date.from(now))
+                .claim(AZP, CLIENT_ID)
+                .claim(SCOPE, "default")
+                .build();
+        SignedJWT subjectToken = signJWT(keyPair, claims);
+
+        OAuth2AccessTokenReqDTO reqDTO = new OAuth2AccessTokenReqDTO();
+        reqDTO.setClientId(CLIENT_ID);
+        reqDTO.setGrantType(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        reqDTO.setTenantDomain("carbon.super");
+        reqDTO.setScope(new String[]{"default"});
+        reqDTO.setRequestParameters(buildSelfDelegationRequestParams(subjectToken));
+        OAuthTokenReqMessageContext ctx = new OAuthTokenReqMessageContext(reqDTO);
+
+        prepareTokenUtilsForSelfDelegation(subjectToken);
+        Assert.assertTrue(tokenExchangeGrantHandler.validateGrant(ctx));
+    }
+
     private SignedJWT signJWT(KeyPair keyPair, JWTClaimsSet claims) throws JOSEException {
 
         JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID("KID").build();
