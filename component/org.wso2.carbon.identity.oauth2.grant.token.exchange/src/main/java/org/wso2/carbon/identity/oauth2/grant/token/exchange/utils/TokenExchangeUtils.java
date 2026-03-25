@@ -647,7 +647,7 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Method to create an association between the provider local user and the identity provider
+     * Method to create an association between the provider local user and the identity provider.
      * @param user    Local user
      * @param idp   Identity provider
      * @param subject  Subject identifier
