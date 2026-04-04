@@ -233,6 +233,26 @@
                     </configuration>
                 </plugin>
                 <plugin>
+                    <groupId>org.jacoco</groupId>
+                    <artifactId>jacoco-maven-plugin</artifactId>
+                    <version>${jacoco.version}</version>
+                    <executions>
+                        <execution>
+                            <id>prepare-agent</id>
+                            <goals>
+                                <goal>prepare-agent</goal>
+                            </goals>
+                        </execution>
+                        <execution>
+                            <id>report</id>
+                            <phase>test</phase>
+                            <goals>
+                                <goal>report</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+                <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-checkstyle-plugin</artifactId>
                     <version>${maven.checkstyleplugin.version}</version>
@@ -295,7 +315,7 @@
         <axiom.version>1.2.11-wso2v6</axiom.version>
         <javax.servlet-api.version>3.0-alpha-1</javax.servlet-api.version>
         <commons-codec.version>1.4.0.wso2v1</commons-codec.version>
-        <jacoco.version>0.7.9</jacoco.version>
+        <jacoco.version>0.8.12</jacoco.version>
         <apache.oltu.oauth2.common>1.0.1</apache.oltu.oauth2.common>
         <apache.oltu.oauth2.client>0.31</apache.oltu.oauth2.client>
         <axiom.osgi.version.range>[1.2.11, 2.0.0)</axiom.osgi.version.range>
