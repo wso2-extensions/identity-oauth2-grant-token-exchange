@@ -19,6 +19,7 @@ package org.wso2.carbon.identity.oauth2.grant.token.exchange.internal;
 
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
+import org.wso2.carbon.identity.oauth2.config.services.OAuth2OIDCConfigOrgUsageScopeMgtService;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.FederatedAssociationManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
 import org.wso2.carbon.user.core.service.RealmService;
@@ -36,6 +37,7 @@ public class TokenExchangeComponentServiceHolder {
     private Map<Integer, UserOperationEventListener> userOperationEventListeners;
     private FederatedAssociationManager federatedAssociationManager;
     private ClaimMetadataManagementService claimMetadataManagementService;
+    private OAuth2OIDCConfigOrgUsageScopeMgtService oAuth2OIDCConfigOrgUsageScopeMgtService;
 
     public static TokenExchangeComponentServiceHolder getInstance() {
         return INSTANCE;
@@ -100,5 +102,16 @@ public class TokenExchangeComponentServiceHolder {
     public void setClaimMetadataManagementService(ClaimMetadataManagementService claimMetadataManagementService) {
 
         this.claimMetadataManagementService = claimMetadataManagementService;
+    }
+
+    public void setOAuth2OIDCConfigOrgUsageScopeMgtService(
+            OAuth2OIDCConfigOrgUsageScopeMgtService oAuth2OIDCConfigOrgUsageScopeMgtService) {
+
+        this.oAuth2OIDCConfigOrgUsageScopeMgtService = oAuth2OIDCConfigOrgUsageScopeMgtService;
+    }
+
+    public OAuth2OIDCConfigOrgUsageScopeMgtService getOAuth2OIDCConfigOrgUsageScopeMgtService() {
+
+        return this.oAuth2OIDCConfigOrgUsageScopeMgtService;
     }
 }

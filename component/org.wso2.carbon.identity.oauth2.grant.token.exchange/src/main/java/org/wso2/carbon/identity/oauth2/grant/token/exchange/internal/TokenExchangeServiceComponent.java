@@ -27,6 +27,7 @@ import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.component.annotations.ReferencePolicy;
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
+import org.wso2.carbon.identity.oauth2.config.services.OAuth2OIDCConfigOrgUsageScopeMgtService;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.FederatedAssociationManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
 import org.wso2.carbon.user.core.service.RealmService;
@@ -179,5 +180,24 @@ public class TokenExchangeServiceComponent {
         }
 
         return userOperationEventListeners.values();
+    }
+
+    @Reference(
+            name = "oAuth2OIDCConfigOrgUsageScopeMgtService",
+            service = OAuth2OIDCConfigOrgUsageScopeMgtService.class,
+            cardinality = ReferenceCardinality.MANDATORY,
+            policy = ReferencePolicy.DYNAMIC,
+            unbind = "unsetOAuth2OIDCConfigOrgUsageScopeMgtService")
+    protected void setOAuth2OIDCConfigOrgUsageScopeMgtService(OAuth2OIDCConfigOrgUsageScopeMgtService
+                                                                          oAuth2OIDCConfigOrgUsageScopeMgtService) {
+
+        TokenExchangeComponentServiceHolder.getInstance().
+                setOAuth2OIDCConfigOrgUsageScopeMgtService(oAuth2OIDCConfigOrgUsageScopeMgtService);
+    }
+
+    protected void unsetOAuth2OIDCConfigOrgUsageScopeMgtService(OAuth2OIDCConfigOrgUsageScopeMgtService
+                                                                        oAuth2OIDCConfigOrgUsageScopeMgtService) {
+
+        TokenExchangeComponentServiceHolder.getInstance().setOAuth2OIDCConfigOrgUsageScopeMgtService(null);
     }
 }

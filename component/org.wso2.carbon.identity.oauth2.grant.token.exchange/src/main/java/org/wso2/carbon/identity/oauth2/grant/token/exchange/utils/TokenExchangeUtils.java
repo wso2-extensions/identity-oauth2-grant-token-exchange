@@ -25,6 +25,7 @@ import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import org.apache.axiom.om.OMElement;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
@@ -61,10 +62,15 @@ import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
+import org.wso2.carbon.identity.oauth.common.exception.InvalidOAuthClientException;
 import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ClientException;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ServerException;
+import org.wso2.carbon.identity.oauth2.config.exceptions.OAuth2OIDCConfigOrgUsageScopeMgtException;
+import org.wso2.carbon.identity.oauth2.config.exceptions.OAuth2OIDCConfigOrgUsageScopeMgtServerException;
+import org.wso2.carbon.identity.oauth2.config.models.IssuerDetails;
+import org.wso2.carbon.identity.oauth2.config.utils.OAuth2OIDCConfigOrgUsageScopeUtils;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.UserLinkStrategy;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.internal.TokenExchangeComponentServiceHolder;
@@ -73,6 +79,8 @@ import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.util.ClaimsUtil;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.identity.oauth2.validators.jwt.JWKSBasedJWTValidator;
+import org.wso2.carbon.identity.organization.management.service.exception.OrganizationManagementException;
+import org.wso2.carbon.identity.organization.management.service.util.OrganizationManagementUtil;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.FederatedAssociationManager;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.exception.FederatedAssociationManagerException;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.model.FederatedAssociation;
@@ -199,6 +207,45 @@ public class TokenExchangeUtils {
                     + ":" + " " + jwtIssuer);
         }
         return identityProvider;
+    }
+
+    /**
+     * Resolves the tenant domain based on the issuer details of the OAuth app registered in a sub organization.
+     * If the tenant is an organization and the app has issuer details pointing to a different tenant,
+     * returns that issuer tenant domain; otherwise returns the original tenant domain.
+     *
+     * @param jwtIssuer    Issuer of the JWT
+     * @param clientId     Client ID of the OAuth app in the sub organization
+     * @param tenantDomain Current tenant domain
+     * @return Resolved tenant domain (issuer tenant domain if applicable, otherwise the original)
+     * @throws IdentityOAuth2Exception Error when resolving the issuer tenant domain
+     */
+    public static String resolveIssuerTenantDomain(String jwtIssuer, String clientId, String tenantDomain)
+            throws IdentityOAuth2Exception {
+
+        try {
+            OAuthAppDO oAuthAppDO = OAuth2Util.getAppInformationByClientId(clientId, tenantDomain);
+            if (oAuthAppDO.getIssuerDetails() != null &&
+                    StringUtils.isNotEmpty(oAuthAppDO.getIssuerDetails().getIssuerTenantDomain())) {
+                String issuerTenantDomain = oAuthAppDO.getIssuerDetails().getIssuerTenantDomain();
+                String resourceIssuerFromClient = OAuth2OIDCConfigOrgUsageScopeUtils.getIssuerLocation(
+                        issuerTenantDomain);
+                if (jwtIssuer.equals(resourceIssuerFromClient)) {
+                    return issuerTenantDomain;
+                }
+                String errorMessage = "The issuer in the client application does not match with " +
+                        "the JWT issuer. JWT Issuer: " + jwtIssuer + ", Issuer configured in client app: " +
+                        resourceIssuerFromClient;
+                throw new IdentityOAuth2ClientException(OAuth2ErrorCodes.INVALID_REQUEST, errorMessage);
+            }
+            return tenantDomain;
+        } catch (InvalidOAuthClientException e) {
+            throw new IdentityOAuth2ClientException("Error while resolving client for client id: " +
+                    clientId, e);
+        } catch (OAuth2OIDCConfigOrgUsageScopeMgtServerException e) {
+            throw new IdentityOAuth2Exception("Error while resolving issuer location for " +
+                    "organization: " + tenantDomain, e);
+        }
     }
 
     /**
@@ -759,7 +806,39 @@ public class TokenExchangeUtils {
             issuer = IdentityApplicationManagementUtil.getProperty(oauthAuthenticatorConfig.getProperties(),
                     Constants.OIDC_IDP_ENTITY_ID).getValue();
         }
-        return jwtIssuer.equals(issuer) ? residentIdentityProvider : null;
+        if (jwtIssuer.equals(issuer)) {
+            return residentIdentityProvider;
+        }
+
+        // Validates the allowed issuers for the sub organization.
+        try {
+            if (OrganizationManagementUtil.isOrganization(tenantDomain)) {
+                List<IssuerDetails> allowedIssuersList = TokenExchangeComponentServiceHolder.getInstance().
+                        getOAuth2OIDCConfigOrgUsageScopeMgtService().getAllowedIssuerDetails();
+                if (CollectionUtils.isNotEmpty(allowedIssuersList)) {
+                    for (IssuerDetails issuerDetail : allowedIssuersList) {
+                        if (issuerDetail.getIssuer().equals(jwtIssuer)) {
+                            if (log.isDebugEnabled()) {
+                                log.debug("Issuer: " + jwtIssuer + " is found in the allowed issuer list " +
+                                        "for tenant: " + tenantDomain + ". Returning the resident IDP " +
+                                        "of issuer tenant: " + issuerDetail.getIssuerTenantDomain());
+                            }
+                            return IdentityProviderManager.getInstance().
+                                    getResidentIdP(issuerDetail.getIssuerTenantDomain());
+                        }
+                    }
+                }
+            }
+        } catch (OrganizationManagementException e) {
+            throw new IdentityOAuth2Exception("Error while checking if the tenant: " + tenantDomain +
+                    " is an organization.", e);
+        } catch (OAuth2OIDCConfigOrgUsageScopeMgtException e) {
+            throw new IdentityOAuth2Exception("Error while retrieving allowed issuer details for organization: "
+                    + tenantDomain, e);
+        } catch (IdentityProviderManagementException e) {
+            throw new IdentityOAuth2Exception("Error while retrieving resident IDP for issuer tenant.", e);
+        }
+        return null;
     }
 
     /**
