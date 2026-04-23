@@ -632,6 +632,25 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                                                  String tenantDomain)
             throws IdentityOAuth2Exception {
 
+        // RFC 8693 : actor_token_type must be a supported token type.
+        // Only JWT and JWT-based access tokens are supported.
+        String actorTokenType = requestParams.get(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
+        if (!TokenExchangeConstants.JWT_TOKEN_TYPE.equals(actorTokenType) &&
+                !TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(actorTokenType)) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Unsupported actor token type: " + actorTokenType
+                            + ". Supported types: " + TokenExchangeConstants.JWT_TOKEN_TYPE
+                            + ", " + TokenExchangeConstants.ACCESS_TOKEN_TYPE);
+        }
+
+        // RFC 8693 : if actor_token_type is access_token, the token must be a JWT.
+        if (TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(actorTokenType)
+                && !isJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN))) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Actor token type is " + TokenExchangeConstants.ACCESS_TOKEN_TYPE
+                            + " but the provided token is not a JWT. Only JWT-based access tokens are supported.");
+        }
+
         // Retrieve the signed JWT object from the request parameters
         SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
         if (signedJWT == null) {
