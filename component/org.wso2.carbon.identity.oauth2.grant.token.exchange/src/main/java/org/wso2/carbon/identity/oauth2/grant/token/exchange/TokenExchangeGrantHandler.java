@@ -691,6 +691,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         // Validate the issuer of the actor token
         validateTokenIssuer(jwtIssuer, tenantDomain);
 
+        // Verify the actor subject is a registered local user.
+        validateActorSubject(tokReqMsgCtx, actorTokenSubject);
+
         tokReqMsgCtx.addProperty(DELEGATING_ACTOR, actorTokenSubject);
     }
 
@@ -806,6 +809,40 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             } finally {
                 IdentityUtil.threadLocalProperties.get().remove(IdentityCoreConstants.SKIP_LOCAL_USER_CLAIM_UPDATE);
             }
+        }
+    }
+
+    private void validateActorSubject(OAuthTokenReqMessageContext tokReqMsgCtx, String actorSubject)
+            throws IdentityOAuth2Exception {
+
+        if (StringUtils.isBlank(actorSubject)) {
+            handleException(OAuth2ErrorCodes.ACCESS_DENIED,
+                    "Actor token subject (sub) is missing or blank.");
+        }
+
+        AbstractUserStoreManager userStoreManager = TokenExchangeUtils.getUserStoreManager(tokReqMsgCtx);
+
+        try {
+            String resolvedUserName = userStoreManager.getUserNameFromUserID(actorSubject);
+            if (StringUtils.isNotBlank(resolvedUserName)) {
+                return;
+            }
+        } catch (UserStoreException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("Actor subject '" + actorSubject +
+                        "' did not resolve as a user ID; trying as a username.", e);
+            }
+        }
+
+        try {
+            if (!userStoreManager.isExistingUser(actorSubject)) {
+                handleException(OAuth2ErrorCodes.ACCESS_DENIED,
+                        "Actor token subject '" + actorSubject +
+                                "' is not a registered user in the identity store. " +
+                                "Delegation chain integrity cannot be guaranteed.");
+            }
+        } catch (UserStoreException e) {
+            handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
         }
     }
 
