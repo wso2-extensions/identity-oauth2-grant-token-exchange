@@ -230,26 +230,26 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
             // Detect self-delegation: no actor token, and the subject token was issued to the
             // requesting client (azp == currentClientId). The 'sub' may be a user UUID
-            // (APPLICATION_USER flow) or the client itself (client-credentials flow) — we do
-            // NOT require sub == clientId here, because that would exclude user-delegated tokens.
             String currentClientId = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
             String tokenClientId = resolveTokenClientId(subjectClaimsSet);
             boolean isSelfDelegation = tokenClientId != null
                     && tokenClientId.equals(currentClientId)
                     && !requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN);
 
+            // Extract existing act claim from subject token once — used by both self and standard delegation.
+            Map<String, Object> existingActClaim = extractActClaim(subjectClaimsSet);
+
             if (isSelfDelegation) {
-                // Self-delegation: the current application is implicitly the actor.
-                // No actor token is present or required.
+                // isDelegationRequest() guarantees existingActClaim is non-null for self-delegation.
+                // Carry the subject token's act claim forward as-is — the re-exchanging application
+                // must not alter the established delegation chain.
                 if (log.isDebugEnabled()) {
                     log.debug("Processing self-delegation request. Current application '" + currentClientId
-                            + "' is implicitly acting as the actor.");
+                            + "' is implicitly acting as the actor. Carrying forward existing act claim.");
                 }
-                // Populate DELEGATING_ACTOR, ACTOR_SUBJECT, and ACTOR_AZP with the current
-                // application's client ID — mirrors what standard delegation extracts from the actor token.
+                tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
+                tokReqMsgCtx.addProperty(ACTOR_SUBJECT, existingActClaim.get(SUB));
                 tokReqMsgCtx.addProperty(DELEGATING_ACTOR, currentClientId);
-                tokReqMsgCtx.addProperty(ACTOR_SUBJECT, currentClientId);
-                tokReqMsgCtx.addProperty(ACTOR_AZP, currentClientId);
             } else {
                 // Standard delegation: actor token is required; validate and extract subject from it.
                 validateActorTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
@@ -268,14 +268,12 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                         log.debug("Actor AZP: " + actorAzpClaim.toString());
                     }
                 }
-            }
-
-            Map<String, Object> existingActClaim = extractActClaim(subjectClaimsSet);
-            if (existingActClaim != null) {
-                tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
-                if (log.isDebugEnabled()) {
-                    List<String> existingActorChain = extractActorChain(existingActClaim);
-                    log.debug("Found existing act claim chain: " + existingActorChain);
+                if (existingActClaim != null) {
+                    tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
+                    if (log.isDebugEnabled()) {
+                        List<String> existingActorChain = extractActorChain(existingActClaim);
+                        log.debug("Found existing act claim chain: " + existingActorChain);
+                    }
                 }
             }
             setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
@@ -362,12 +360,15 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             return true;
         }
 
-        // Self-delegation: no actor token, and the subject token was issued to the requesting
-        // client (azp == currentClientId). The sub may be a user UUID (APPLICATION_USER) or the
-        // client itself (CC token) — sub == clientId is NOT required here.
+        // Self-delegation: no actor token, the subject token was issued to the requesting client
+        // (azp == currentClientId), AND the subject token already carries an act claim from a
+        // previous delegation. Without an existing act claim there is no delegation chain to carry
+        // forward — the request is treated as regular token exchange instead.
         String currentClientId = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
         String tokenClientId = resolveTokenClientId(subjectClaimsSet);
-        return tokenClientId != null && tokenClientId.equals(currentClientId);
+        return tokenClientId != null
+                && tokenClientId.equals(currentClientId)
+                && subjectClaimsSet.getClaim(ACT) != null;
     }
 
     /**
