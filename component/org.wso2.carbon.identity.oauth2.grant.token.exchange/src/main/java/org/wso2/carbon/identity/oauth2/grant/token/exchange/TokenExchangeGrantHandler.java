@@ -26,6 +26,7 @@ import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.wso2.carbon.context.PrivilegedCarbonContext;
 import org.wso2.carbon.identity.application.authentication.framework.exception.UserIdNotFoundException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.common.model.ClaimMapping;
@@ -38,6 +39,8 @@ import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLock
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
+import org.wso2.carbon.identity.oauth2.config.exceptions.OAuth2OIDCConfigOrgUsageScopeMgtServerException;
+import org.wso2.carbon.identity.oauth2.config.utils.OAuth2OIDCConfigOrgUsageScopeUtils;
 import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenRespDTO;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.internal.TokenExchangeServiceComponent;
@@ -47,6 +50,10 @@ import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.token.handlers.grant.AbstractAuthorizationGrantHandler;
 import org.wso2.carbon.identity.oauth2.util.ClaimsUtil;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
+import org.wso2.carbon.identity.organization.management.service.exception.OrganizationManagementException;
+import org.wso2.carbon.identity.organization.management.service.util.OrganizationManagementUtil;
+import org.wso2.carbon.idp.mgt.IdentityProviderManagementException;
+import org.wso2.carbon.idp.mgt.IdentityProviderManager;
 import org.wso2.carbon.user.api.UserStoreClientException;
 import org.wso2.carbon.user.core.UserStoreException;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
@@ -78,6 +85,7 @@ import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.Tok
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ORG_ID;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUB;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUBJECT_TOKEN;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUBJECT_TOKEN_CLIENT_ID;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.USER_ORG;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkExpirationTime;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkNotBeforeTime;
@@ -853,8 +861,19 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     @Override
     public OAuth2AccessTokenRespDTO issue(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
 
-        OAuth2AccessTokenRespDTO tokenRespDTO = super.issue(tokReqMsgCtx);
         AuthenticatedUser user = tokReqMsgCtx.getAuthorizedUser();
+        String appResidentOrganizationId = PrivilegedCarbonContext.getThreadLocalCarbonContext().
+                getApplicationResidentOrganizationId();
+        if (!tokReqMsgCtx.isImpersonationRequest() && user != null &&
+                StringUtils.isNotBlank(appResidentOrganizationId)) {
+            if (StringUtils.isBlank(user.getAccessingOrganization())) {
+                user.setAccessingOrganization(appResidentOrganizationId);
+            }
+            if (StringUtils.isBlank(user.getUserResidentOrganization())) {
+                user.setUserResidentOrganization(appResidentOrganizationId);
+            }
+        }
+        OAuth2AccessTokenRespDTO tokenRespDTO = super.issue(tokReqMsgCtx);
         Map<ClaimMapping, String> userAttributes = user.getUserAttributes();
         if (MapUtils.isNotEmpty(userAttributes)) {
             ClaimsUtil.addUserAttributesToCache(tokenRespDTO, tokReqMsgCtx, userAttributes);
@@ -936,6 +955,20 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                                        RequestParameter[] params, String tenantDomain) throws IdentityOAuth2Exception {
 
         String idpIssuerName = OAuth2Util.getIssuerLocation(tenantDomain);
+        // Getting the issuer location if the provided tenant domain is an organization.
+        try {
+            if (OrganizationManagementUtil.isOrganization(tenantDomain)) {
+                log.debug("Tenant domain is an organization. Retrieving organization level issuer location.");
+                idpIssuerName = OAuth2OIDCConfigOrgUsageScopeUtils.getIssuerLocation(tenantDomain);
+            }
+        } catch (OrganizationManagementException e) {
+            throw new IdentityOAuth2Exception("Error occurred while checking tenant domain : " +  tenantDomain +
+                    " is belong to an organization", e);
+        } catch (OAuth2OIDCConfigOrgUsageScopeMgtServerException e) {
+            throw new IdentityOAuth2Exception("Error occurred while retrieving issuer location for tenant domain : " +
+                    tenantDomain, e);
+        }
+
         boolean audienceFound = audiences != null && audiences.contains(idpIssuerName);
 
         if (audienceFound) {
@@ -1054,8 +1087,40 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             validateMandatoryClaims(claimsSet, subject);
             identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
 
+            boolean isLocalIdentityProvider = Constants.LOCAL_IDP_NAME.equals(identityProvider.
+                    getIdentityProviderName());
+
+            boolean isOrganization;
             try {
-                if (validateSignature(signedJWT, identityProvider, tenantDomain)) {
+                isOrganization = OrganizationManagementUtil.isOrganization(tenantDomain);
+            } catch (OrganizationManagementException e) {
+                throw new IdentityOAuth2Exception("Error while checking whether the given tenant : " + tenantDomain +
+                        " is an organization", e);
+            }
+
+            String issuerTenantDomain = tenantDomain;
+            /*
+             Handles the app to app token exchange in sub organization applications by getting the
+             issuer's tenant domain.
+            */
+            if (isOrganization && isLocalIdentityProvider) {
+                String clientId = claimsSet.getClaim(SUBJECT_TOKEN_CLIENT_ID) != null ?
+                        claimsSet.getClaim(SUBJECT_TOKEN_CLIENT_ID).toString() : null;
+                if (StringUtils.isNotEmpty(clientId)) {
+                    issuerTenantDomain = TokenExchangeUtils.resolveIssuerTenantDomain(jwtIssuer, clientId,
+                            tenantDomain);
+                    if (log.isDebugEnabled()) {
+                        log.debug("Resolved issuer tenant domain: " + issuerTenantDomain +
+                                " for client: " + clientId);
+                    }
+                } else {
+                    throw new IdentityOAuth2Exception("client_id claim is not found in the token to resolve " +
+                            "issuer tenant domain");
+                }
+            }
+
+            try {
+                if (validateSignature(signedJWT, identityProvider, issuerTenantDomain)) {
                     log.debug("Signature/MAC validated successfully.");
                 } else {
                     handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication "
@@ -1071,6 +1136,21 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             if (!audienceFound) {
                 TokenExchangeUtils.handleClientException(Constants.TokenExchangeConstants.INVALID_TARGET,
                         "Invalid audience values provided");
+            }
+
+            try {
+                if (isOrganization && isLocalIdentityProvider) {
+                    /*
+                     At this point, signature validation was performed using the issuer organization's resident
+                     IDP to verify the subject token's authenticity. Now that the token is validated,
+                     the identity provider is switched to the sub organization's own resident IDP so
+                     that subsequent processing — custom claim validation, user resolution, and claim mapping —
+                     is governed by the sub organization's configuration rather than the issuer organization.
+                    */
+                    identityProvider = IdentityProviderManager.getInstance().getResidentIdP(tenantDomain);
+                }
+            } catch (IdentityProviderManagementException e) {
+                throw new IdentityOAuth2Exception(String.format(Constants.ERROR_GET_RESIDENT_IDP, tenantDomain), e);
             }
 
             boolean customClaimsValidated = validateCustomClaims(claimsSet.getClaims(), identityProvider, params);
