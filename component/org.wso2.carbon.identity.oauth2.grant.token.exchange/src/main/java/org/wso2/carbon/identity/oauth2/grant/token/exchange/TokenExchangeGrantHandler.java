@@ -142,8 +142,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         Map<String, Object> actClaim = (Map<String, Object>) rawActClaim;
 
-        // Act exists but missing required 'sub' = INVALID TOKEN
-        if (actClaim.get(SUB) == null) {
+        // Act exists but missing or blank required 'sub' = INVALID TOKEN
+        if (actClaim.get(SUB) == null || StringUtils.isBlank(actClaim.get(SUB).toString())) {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST,
                 "Invalid act claim: missing required 'sub' field as per RFC 8693");
         }
@@ -633,20 +633,17 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                                                  String tenantDomain)
             throws IdentityOAuth2Exception {
 
-        // RFC 8693 : actor_token_type must be a supported token type.
-        // Only JWT and JWT-based access tokens are supported.
+        // Only JWT-based access tokens are accepted as actor tokens.
+        // Generic JWT type is excluded to prevent ID tokens from being used as actor tokens.
         String actorTokenType = requestParams.get(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
-        if (!TokenExchangeConstants.JWT_TOKEN_TYPE.equals(actorTokenType) &&
-                !TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(actorTokenType)) {
+        if (!TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(actorTokenType)) {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST,
                     "Unsupported actor token type: " + actorTokenType
-                            + ". Supported types: " + TokenExchangeConstants.JWT_TOKEN_TYPE
-                            + ", " + TokenExchangeConstants.ACCESS_TOKEN_TYPE);
+                            + ". Supported type: " + TokenExchangeConstants.ACCESS_TOKEN_TYPE);
         }
 
-        // RFC 8693 : if actor_token_type is access_token, the token must be a JWT.
-        if (TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(actorTokenType)
-                && !isJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN))) {
+        // The access token must be a JWT.
+        if (!isJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN))) {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST,
                     "Actor token type is " + TokenExchangeConstants.ACCESS_TOKEN_TYPE
                             + " but the provided token is not a JWT. Only JWT-based access tokens are supported.");
