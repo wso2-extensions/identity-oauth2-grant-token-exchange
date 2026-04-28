@@ -67,6 +67,7 @@ public class Constants {
         public static final String ORG_ID = "org_id";
         public static final String SUB = "sub";
         public static final String SCOPE = "scope";
+        public static final String SUBJECT_TOKEN_CLIENT_ID = "client_id";
 
     }
 

@@ -41,6 +41,7 @@ import org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeU
 import org.wso2.carbon.identity.oauth2.model.RequestParameter;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
+import org.wso2.carbon.identity.organization.management.service.util.OrganizationManagementUtil;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -78,6 +79,7 @@ public class TokenExchangeGrantHandlerTest {
     private IdentityProvider idp;
     private OAuthTokenReqMessageContext tokReqMsgCtx;
     private MockedStatic<TokenExchangeUtils> tokenExchangeUtils;
+    private MockedStatic<OrganizationManagementUtil> organizationManagementUtil;
     private TokenExchangeGrantHandler tokenExchangeGrantHandler;
 
     private MockedStatic<OAuth2Util> oAuth2Util;
@@ -95,6 +97,9 @@ public class TokenExchangeGrantHandlerTest {
     public void init() throws Exception {
 
         tokenExchangeUtils = mockStatic(TokenExchangeUtils.class);
+        organizationManagementUtil = mockStatic(OrganizationManagementUtil.class);
+        organizationManagementUtil.when(() -> OrganizationManagementUtil.isOrganization(anyString()))
+                .thenReturn(false);
 
         OAuthServerConfiguration serverConfiguration = mock(OAuthServerConfiguration.class);
         mockStatic(OAuthServerConfiguration.class);
@@ -664,5 +669,6 @@ public class TokenExchangeGrantHandlerTest {
     public void close() {
 
         tokenExchangeUtils.close();
+        organizationManagementUtil.close();
     }
 }
