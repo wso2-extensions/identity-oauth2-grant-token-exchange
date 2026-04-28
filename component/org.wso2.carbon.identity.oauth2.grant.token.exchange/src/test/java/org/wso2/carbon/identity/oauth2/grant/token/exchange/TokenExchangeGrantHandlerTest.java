@@ -48,6 +48,8 @@ import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.text.ParseException;
 import java.time.Instant;
+import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -65,6 +67,7 @@ import static org.wso2.carbon.identity.oauth.common.OAuthConstants.EXISTING_ACT_
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IS_DELEGATION_REQUEST;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.REQUESTED_AUDIENCE;
 
 /**
  * Unit tests for {@link TokenExchangeGrantHandler}.
@@ -392,6 +395,8 @@ public class TokenExchangeGrantHandlerTest {
         KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
         KeyPair keyPair = keyGenerator.generateKeyPair();
         Instant now = Instant.now();
+        Map<String, Object> actClaim = new HashMap<>();
+        actClaim.put("sub", ACTOR_SUBJECT_ID);
         JWTClaimsSet selfDelegationClaims = new JWTClaimsSet.Builder()
                 .issuer(ISSUER)
                 .subject(IMPERSONATED_SUBJECT_ID)
@@ -401,6 +406,7 @@ public class TokenExchangeGrantHandlerTest {
                 .notBeforeTime(Date.from(now))
                 .claim("azp", CLIENT_ID)
                 .claim("scope", "default")
+                .claim("act", actClaim)
                 .build();
         SignedJWT subjectToken = signJWT(keyPair, selfDelegationClaims);
 
@@ -418,8 +424,7 @@ public class TokenExchangeGrantHandlerTest {
         Assert.assertTrue(isValid);
         Assert.assertEquals(ctx.getProperty(IS_DELEGATION_REQUEST), true);
         Assert.assertEquals(ctx.getProperty(DELEGATING_ACTOR), CLIENT_ID);
-        Assert.assertEquals(ctx.getProperty(ACTOR_SUBJECT), CLIENT_ID);
-        Assert.assertEquals(ctx.getProperty(ACTOR_AZP), CLIENT_ID);
+        Assert.assertEquals(ctx.getProperty(ACTOR_SUBJECT), ACTOR_SUBJECT_ID);
     }
 
     @Test
@@ -573,7 +578,7 @@ public class TokenExchangeGrantHandlerTest {
                         Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE),
                 new RequestParameter(Constants.TokenExchangeConstants.ACTOR_TOKEN, actorToken.serialize()),
                 new RequestParameter(Constants.TokenExchangeConstants.ACTOR_TOKEN_TYPE,
-                        Constants.TokenExchangeConstants.JWT_TOKEN_TYPE),
+                        Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE),
         };
     }
 
@@ -589,7 +594,7 @@ public class TokenExchangeGrantHandlerTest {
         };
     }
 
-    private void prepareTokenUtilsForDelegation(SignedJWT subjectToken, SignedJWT actorToken) throws ParseException {
+    private void prepareTokenUtilsForDelegation(SignedJWT subjectToken, SignedJWT actorToken) throws Exception {
 
         tokenExchangeUtils.when(() -> TokenExchangeUtils.getSignedJWT(subjectToken.serialize()))
                 .thenReturn(subjectToken);
@@ -603,6 +608,11 @@ public class TokenExchangeGrantHandlerTest {
                 .thenReturn(actorToken.getJWTClaimsSet());
         tokenExchangeUtils.when(() -> TokenExchangeUtils.validateSignature(actorToken, idp, "carbon.super"))
                 .thenReturn(true);
+        oAuth2Util.when(() -> OAuth2Util.isJWT(actorToken.serialize())).thenReturn(true);
+        AbstractUserStoreManager userStoreManager = mock(AbstractUserStoreManager.class);
+        when(userStoreManager.getUserNameFromUserID(Mockito.anyString())).thenReturn("actorUser");
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.getUserStoreManager(Mockito.any()))
+                .thenReturn(userStoreManager);
     }
 
     private void prepareTokenUtilsForSelfDelegation(SignedJWT subjectToken) throws ParseException {
@@ -613,6 +623,41 @@ public class TokenExchangeGrantHandlerTest {
                 .thenReturn(subjectToken.getJWTClaimsSet());
         tokenExchangeUtils.when(() -> TokenExchangeUtils.validateSignature(subjectToken, idp, "carbon.super"))
                 .thenReturn(true);
+    }
+
+    @DataProvider(name = "requestedAudienceTestData")
+    public Object[][] requestedAudienceTestData() {
+
+        return new Object[][]{
+                // audienceParam, expectedStoredValue
+                {"https://api.example.com", "https://api.example.com"},
+                {"https://api.example.com https://other.example.com", null},
+        };
+    }
+
+    @Test(dataProvider = "requestedAudienceTestData")
+    public void testDelegationRequestedAudienceProperty(String audienceParam, String expectedStoredValue)
+            throws Exception {
+
+        SignedJWT subjectToken = buildDelegationSubjectToken();
+        SignedJWT actorToken = buildActorTokenForDelegation();
+
+        OAuth2AccessTokenReqDTO reqDTO = new OAuth2AccessTokenReqDTO();
+        reqDTO.setClientId(CLIENT_ID);
+        reqDTO.setGrantType(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        reqDTO.setTenantDomain("carbon.super");
+        reqDTO.setScope(new String[]{"default"});
+        RequestParameter[] params = buildDelegationRequestParams(subjectToken, actorToken);
+        RequestParameter[] paramsWithAudience = Arrays.copyOf(params, params.length + 1);
+        paramsWithAudience[params.length] =
+                new RequestParameter(Constants.TokenExchangeConstants.AUDIENCE, audienceParam);
+        reqDTO.setRequestParameters(paramsWithAudience);
+        OAuthTokenReqMessageContext ctx = new OAuthTokenReqMessageContext(reqDTO);
+
+        prepareTokenUtilsForDelegation(subjectToken, actorToken);
+        tokenExchangeGrantHandler.validateGrant(ctx);
+
+        Assert.assertEquals(ctx.getProperty(REQUESTED_AUDIENCE), expectedStoredValue);
     }
 
     @AfterTest

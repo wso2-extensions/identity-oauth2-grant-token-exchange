@@ -37,6 +37,7 @@ import org.wso2.carbon.identity.event.IdentityEventException;
 import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLockException;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.REQUESTED_AUDIENCE;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenRespDTO;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants;
@@ -277,6 +278,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 }
             }
             setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
+            applyRequestedAudience(requestedAudience, tokReqMsgCtx);
             return true;
 
         } else {
@@ -1027,6 +1029,31 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
         }
         return tenantDomain;
+    }
+
+    /**
+     * Applies the requested audience from the token exchange request to the issued token.
+     * Only a single audience value is supported. If multiple values or an invalid value is
+     * provided, falls back to the default audience set configured for the application.
+     */
+    private void applyRequestedAudience(String requestedAudience, OAuthTokenReqMessageContext tokReqMsgCtx) {
+
+        if (StringUtils.isBlank(requestedAudience)) {
+            return;
+        }
+        String[] audienceValues = requestedAudience.trim().split("\\s+");
+        if (audienceValues.length != 1) {
+            if (log.isDebugEnabled()) {
+                log.debug("Multiple audience values provided in token exchange request. Falling back to default.");
+            }
+            return;
+        }
+        // Store the single requested audience as a context property. JWTTokenIssuer will apply it
+        // after the base class sets the default audience, validating it against the allowed list.
+        tokReqMsgCtx.addProperty(REQUESTED_AUDIENCE, audienceValues[0]);
+        if (log.isDebugEnabled()) {
+            log.debug("Requested audience '" + audienceValues[0] + "' stored for token issuer validation.");
+        }
     }
 
     private void handleJWTSubjectToken(Map<String, String> requestParams, OAuthTokenReqMessageContext tokReqMsgCtx,
