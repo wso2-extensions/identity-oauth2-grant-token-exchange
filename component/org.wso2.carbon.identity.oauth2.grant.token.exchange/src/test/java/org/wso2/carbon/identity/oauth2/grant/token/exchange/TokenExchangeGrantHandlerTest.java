@@ -41,6 +41,7 @@ import org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeU
 import org.wso2.carbon.identity.oauth2.model.RequestParameter;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
+import org.wso2.carbon.identity.organization.management.service.util.OrganizationManagementUtil;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -66,20 +67,24 @@ public class TokenExchangeGrantHandlerTest {
     private IdentityProvider idp;
     private OAuthTokenReqMessageContext tokReqMsgCtx;
     private MockedStatic<TokenExchangeUtils> tokenExchangeUtils;
+    private MockedStatic<OrganizationManagementUtil> organizationManagementUtil;
     private TokenExchangeGrantHandler tokenExchangeGrantHandler;
 
     private MockedStatic<OAuth2Util> oAuth2Util;
     private OAuth2AccessTokenReqDTO oAuth2AccessTokenReqDTO;
     private static final String IMPERSONATOR_ID = "8122e3de-0f3b-4b0e-a43a-d0c237451b7a";
-    private static final String IMPERSONATED_SUBJECT_ID ="d9982d93-4e73-4565-b7ac-3605e8d05f80";
-    private static final String ISSUER ="https://localhost:9443/oauth2/token";
-    private static final String CLIENT_ID ="7N7vQHZbJtPnzegtGXJvvwDL4wca0";
+    private static final String IMPERSONATED_SUBJECT_ID = "d9982d93-4e73-4565-b7ac-3605e8d05f80";
+    private static final String ISSUER = "https://localhost:9443/oauth2/token";
+    private static final String CLIENT_ID = "7N7vQHZbJtPnzegtGXJvvwDL4wca0";
 
 
     @BeforeTest
     public void init() throws Exception {
 
         tokenExchangeUtils = mockStatic(TokenExchangeUtils.class);
+        organizationManagementUtil = mockStatic(OrganizationManagementUtil.class);
+        organizationManagementUtil.when(() -> OrganizationManagementUtil.isOrganization(anyString()))
+                .thenReturn(false);
 
         OAuthServerConfiguration serverConfiguration = mock(OAuthServerConfiguration.class);
         mockStatic(OAuthServerConfiguration.class);
@@ -197,9 +202,9 @@ public class TokenExchangeGrantHandlerTest {
     @Test
     public void testValidateSubjectTokenExchange() throws Exception {
 
-        SignedJWT subjectToken = getImpersonateSubjectToken( false, false
-                , ISSUER, CLIENT_ID, IMPERSONATOR_ID );
-        SignedJWT actorToken = getIdToken(false, ISSUER, IMPERSONATOR_ID );
+        SignedJWT subjectToken = getImpersonateSubjectToken(false, false
+                , ISSUER, CLIENT_ID, IMPERSONATOR_ID);
+        SignedJWT actorToken = getIdToken(false, ISSUER, IMPERSONATOR_ID);
 
         RequestParameter[] requestParameters = getImpersonationReqParams(subjectToken, actorToken);
         oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
@@ -215,7 +220,7 @@ public class TokenExchangeGrantHandlerTest {
 
     private SignedJWT getImpersonateSubjectToken(boolean withoutMandatoryClaims,
                                                  boolean withoutImpersonator, String issuer, String audience,
-                                                 String impersonator ) throws NoSuchAlgorithmException, JOSEException {
+                                                 String impersonator) throws NoSuchAlgorithmException, JOSEException {
 
         KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
         KeyPair keyPair = keyGenerator.generateKeyPair();
@@ -234,7 +239,8 @@ public class TokenExchangeGrantHandlerTest {
                     .expirationTime(Date.from(Instant.ofEpochSecond(currentTime.getEpochSecond() + 36000)))
                     .notBeforeTime(Date.from(currentTime));
 
-        } if (!withoutImpersonator) {
+        }
+        if (!withoutImpersonator) {
             builder.claim("may_act", Collections.singletonMap("sub", impersonator));
         }
 
@@ -245,7 +251,7 @@ public class TokenExchangeGrantHandlerTest {
         return signedJwt;
     }
 
-    private SignedJWT getIdToken(boolean withoutMandatoryClaims, String issuer, String impersonator )
+    private SignedJWT getIdToken(boolean withoutMandatoryClaims, String issuer, String impersonator)
             throws NoSuchAlgorithmException, JOSEException {
 
         KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
@@ -302,9 +308,9 @@ public class TokenExchangeGrantHandlerTest {
                                                              String impersonatorActorToken) throws Exception {
 
         SignedJWT subjectToken = getImpersonateSubjectToken(withoutMandatoryClaims, withoutImpersonator,
-                issuer, audience, impersonator );
+                issuer, audience, impersonator);
         SignedJWT actorToken = getIdToken(withoutMandatoryClaimsActorToken,
-                issuerActorToken, impersonatorActorToken );
+                issuerActorToken, impersonatorActorToken);
 
         RequestParameter[] requestParameters = getImpersonationReqParams(subjectToken, actorToken);
         oAuth2AccessTokenReqDTO.setRequestParameters(requestParameters);
@@ -354,5 +360,6 @@ public class TokenExchangeGrantHandlerTest {
     public void close() {
 
         tokenExchangeUtils.close();
+        organizationManagementUtil.close();
     }
 }

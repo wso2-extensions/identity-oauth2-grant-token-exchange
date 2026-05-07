@@ -24,8 +24,8 @@ import com.nimbusds.jose.JWSVerifier;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
-import net.minidev.json.JSONArray;
 import org.apache.axiom.om.OMElement;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
@@ -38,6 +38,7 @@ import org.wso2.carbon.identity.application.authentication.framework.model.Authe
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkUtils;
 import org.wso2.carbon.identity.application.common.IdentityApplicationManagementException;
+import org.wso2.carbon.identity.application.common.model.CertificateInfo;
 import org.wso2.carbon.identity.application.common.model.Claim;
 import org.wso2.carbon.identity.application.common.model.ClaimConfig;
 import org.wso2.carbon.identity.application.common.model.ClaimMapping;
@@ -60,12 +61,16 @@ import org.wso2.carbon.identity.core.util.IdentityConfigParser;
 import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
-import org.wso2.carbon.identity.oauth.OAuthUtil;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
+import org.wso2.carbon.identity.oauth.common.exception.InvalidOAuthClientException;
 import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ClientException;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ServerException;
+import org.wso2.carbon.identity.oauth2.config.exceptions.OAuth2OIDCConfigOrgUsageScopeMgtException;
+import org.wso2.carbon.identity.oauth2.config.exceptions.OAuth2OIDCConfigOrgUsageScopeMgtServerException;
+import org.wso2.carbon.identity.oauth2.config.models.IssuerDetails;
+import org.wso2.carbon.identity.oauth2.config.utils.OAuth2OIDCConfigOrgUsageScopeUtils;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.UserLinkStrategy;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.internal.TokenExchangeComponentServiceHolder;
@@ -74,6 +79,8 @@ import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.util.ClaimsUtil;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.identity.oauth2.validators.jwt.JWKSBasedJWTValidator;
+import org.wso2.carbon.identity.organization.management.service.exception.OrganizationManagementException;
+import org.wso2.carbon.identity.organization.management.service.util.OrganizationManagementUtil;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.FederatedAssociationManager;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.exception.FederatedAssociationManagerException;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.model.FederatedAssociation;
@@ -88,8 +95,6 @@ import org.wso2.carbon.user.core.util.UserCoreUtil;
 import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
-import static org.wso2.carbon.utils.CarbonUtils.isLegacyAuditLogsDisabled;
-
 import java.security.PublicKey;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateExpiredException;
@@ -97,6 +102,7 @@ import java.security.cert.CertificateNotYetValidException;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPublicKey;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
@@ -110,6 +116,7 @@ import javax.xml.namespace.QName;
 
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.DEFAULT_IDP_NAME;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.REGISTERED_CLAIMS;
+import static org.wso2.carbon.utils.CarbonUtils.isLegacyAuditLogsDisabled;
 
 /**
  * Util methods for Token Exchange Grant Type.
@@ -132,6 +139,7 @@ public class TokenExchangeUtils {
             return null;
         }
         try {
+            IdentityUtil.validateX5CLength(subjectToken);
             signedJWT = SignedJWT.parse(subjectToken);
         } catch (ParseException e) {
             throw new IdentityOAuth2Exception("Error while parsing the JWT", e);
@@ -199,6 +207,45 @@ public class TokenExchangeUtils {
                     + ":" + " " + jwtIssuer);
         }
         return identityProvider;
+    }
+
+    /**
+     * Resolves the tenant domain based on the issuer details of the OAuth app registered in a sub organization.
+     * If the tenant is an organization and the app has issuer details pointing to a different tenant,
+     * returns that issuer tenant domain; otherwise returns the original tenant domain.
+     *
+     * @param jwtIssuer    Issuer of the JWT
+     * @param clientId     Client ID of the OAuth app in the sub organization
+     * @param tenantDomain Current tenant domain
+     * @return Resolved tenant domain (issuer tenant domain if applicable, otherwise the original)
+     * @throws IdentityOAuth2Exception Error when resolving the issuer tenant domain
+     */
+    public static String resolveIssuerTenantDomain(String jwtIssuer, String clientId, String tenantDomain)
+            throws IdentityOAuth2Exception {
+
+        try {
+            OAuthAppDO oAuthAppDO = OAuth2Util.getAppInformationByClientId(clientId, tenantDomain);
+            if (oAuthAppDO.getIssuerDetails() != null &&
+                    StringUtils.isNotEmpty(oAuthAppDO.getIssuerDetails().getIssuerTenantDomain())) {
+                String issuerTenantDomain = oAuthAppDO.getIssuerDetails().getIssuerTenantDomain();
+                String resourceIssuerFromClient = OAuth2OIDCConfigOrgUsageScopeUtils.getIssuerLocation(
+                        issuerTenantDomain);
+                if (jwtIssuer.equals(resourceIssuerFromClient)) {
+                    return issuerTenantDomain;
+                }
+                String errorMessage = "The issuer in the client application does not match with " +
+                        "the JWT issuer. JWT Issuer: " + jwtIssuer + ", Issuer configured in client app: " +
+                        resourceIssuerFromClient;
+                throw new IdentityOAuth2ClientException(OAuth2ErrorCodes.INVALID_REQUEST, errorMessage);
+            }
+            return tenantDomain;
+        } catch (InvalidOAuthClientException e) {
+            throw new IdentityOAuth2ClientException("Error while resolving client for client id: " +
+                    clientId, e);
+        } catch (OAuth2OIDCConfigOrgUsageScopeMgtServerException e) {
+            throw new IdentityOAuth2Exception("Error while resolving issuer location for " +
+                    "organization: " + tenantDomain, e);
+        }
     }
 
     /**
@@ -318,8 +365,8 @@ public class TokenExchangeUtils {
      * @param idp          Identity provider who issued the signed JWT
      * @param tenantDomain Tenant Domain
      * @return true | false whether signature is valid or not
-     * @throws com.nimbusds.jose.JOSEException                         Error when verifying the signature of JWT
-     * @throws org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception Error when validating the signature of JWT
+     * @throws JOSEException             Error when verifying the signature of JWT
+     * @throws IdentityOAuth2Exception   Error when validating the signature of JWT
      */
     public static boolean validateSignature(SignedJWT signedJWT, IdentityProvider idp, String tenantDomain)
             throws JOSEException, IdentityOAuth2Exception {
@@ -350,8 +397,8 @@ public class TokenExchangeUtils {
             authenticatedUser = OAuth2Util.getUserFromUserName(authenticatedSubjectIdentifier);
             authenticatedUser.setAuthenticatedSubjectIdentifier(authenticatedSubjectIdentifier);
         } else {
-            authenticatedUser =
-                    AuthenticatedUser.createFederateAuthenticatedUserFromSubjectIdentifier(authenticatedSubjectIdentifier);
+            authenticatedUser = AuthenticatedUser
+                    .createFederateAuthenticatedUserFromSubjectIdentifier(authenticatedSubjectIdentifier);
             authenticatedUser.setUserName(authenticatedSubjectIdentifier);
         }
         authenticatedUser.setFederatedUser(true);
@@ -545,7 +592,8 @@ public class TokenExchangeUtils {
      * @return  Service provider.
      * @throws IdentityOAuth2Exception  Identity OAuth2 Exception.
      */
-    private static ServiceProvider getServiceProvider(OAuthTokenReqMessageContext tokenReqMsgCtx) throws IdentityOAuth2Exception {
+    private static ServiceProvider getServiceProvider(OAuthTokenReqMessageContext tokenReqMsgCtx)
+            throws IdentityOAuth2Exception {
 
         ServiceProvider serviceProvider;
         OAuthAppDO oAuthAppBean = (OAuthAppDO) tokenReqMsgCtx.getProperty(Constants.OAUTH_APP_DO_PROPERTY);
@@ -578,7 +626,8 @@ public class TokenExchangeUtils {
      * @return  true if the user is associated with the identity provider, false otherwise
      * @throws IdentityOAuth2Exception  Identity OAuth2 Exception.
      */
-    private static boolean isUserAssociated(User user, IdentityProvider idp, String subject) throws IdentityOAuth2Exception {
+    private static boolean isUserAssociated(User user, IdentityProvider idp, String subject)
+            throws IdentityOAuth2Exception {
 
         FederatedAssociationManager federatedAssociationManager =
                 TokenExchangeComponentServiceHolder.getInstance().getFederatedAssociationManager();
@@ -700,10 +749,17 @@ public class TokenExchangeUtils {
             }
 
             Object idPGroupsObj = claimsSet.getClaim(remoteClaimURIOfAppRoleClaim);
+            if (idPGroupsObj == null) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Claim " + remoteClaimURIOfAppRoleClaim + " not found in subject token.");
+                }
+                return;
+            }
+
             String idPGroups = null;
 
-            if (idPGroupsObj instanceof JSONArray) {
-                idPGroups = StringUtils.join(((JSONArray) idPGroupsObj).toArray(),
+            if (idPGroupsObj instanceof ArrayList) {
+                idPGroups = StringUtils.join(((ArrayList) idPGroupsObj).toArray(),
                         FrameworkUtils.getMultiAttributeSeparator());
             } else {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Invalid " + remoteClaimURIOfAppRoleClaim +
@@ -731,7 +787,8 @@ public class TokenExchangeUtils {
      * @return resident Identity Provider.
      * @throws IdentityOAuth2Exception Identity OAuth2 Exception.
      */
-    public static IdentityProvider getResidentIDPForIssuer(String tenantDomain, String jwtIssuer) throws IdentityOAuth2Exception {
+    public static IdentityProvider getResidentIDPForIssuer(String tenantDomain, String jwtIssuer)
+            throws IdentityOAuth2Exception {
 
         String issuer = StringUtils.EMPTY;
         IdentityProvider residentIdentityProvider;
@@ -749,7 +806,39 @@ public class TokenExchangeUtils {
             issuer = IdentityApplicationManagementUtil.getProperty(oauthAuthenticatorConfig.getProperties(),
                     Constants.OIDC_IDP_ENTITY_ID).getValue();
         }
-        return jwtIssuer.equals(issuer) ? residentIdentityProvider : null;
+        if (jwtIssuer.equals(issuer)) {
+            return residentIdentityProvider;
+        }
+
+        // Validates the allowed issuers for the sub organization.
+        try {
+            if (OrganizationManagementUtil.isOrganization(tenantDomain)) {
+                List<IssuerDetails> allowedIssuersList = TokenExchangeComponentServiceHolder.getInstance().
+                        getOAuth2OIDCConfigOrgUsageScopeMgtService().getAllowedIssuerDetails();
+                if (CollectionUtils.isNotEmpty(allowedIssuersList)) {
+                    for (IssuerDetails issuerDetail : allowedIssuersList) {
+                        if (issuerDetail.getIssuer().equals(jwtIssuer)) {
+                            if (log.isDebugEnabled()) {
+                                log.debug("Issuer: " + jwtIssuer + " is found in the allowed issuer list " +
+                                        "for tenant: " + tenantDomain + ". Returning the resident IDP " +
+                                        "of issuer tenant: " + issuerDetail.getIssuerTenantDomain());
+                            }
+                            return IdentityProviderManager.getInstance().
+                                    getResidentIdP(issuerDetail.getIssuerTenantDomain());
+                        }
+                    }
+                }
+            }
+        } catch (OrganizationManagementException e) {
+            throw new IdentityOAuth2Exception("Error while checking if the tenant: " + tenantDomain +
+                    " is an organization.", e);
+        } catch (OAuth2OIDCConfigOrgUsageScopeMgtException e) {
+            throw new IdentityOAuth2Exception("Error while retrieving allowed issuer details for organization: "
+                    + tenantDomain, e);
+        } catch (IdentityProviderManagementException e) {
+            throw new IdentityOAuth2Exception("Error while retrieving resident IDP for issuer tenant.", e);
+        }
+        return null;
     }
 
     /**
@@ -912,6 +1001,27 @@ public class TokenExchangeUtils {
         return x509Certificate;
     }
 
+    private static X509Certificate resolveSignerCertificate(IdentityProvider idp, String tenantDomain,
+                                                            CertificateInfo certificateInfo)
+            throws IdentityOAuth2Exception {
+
+        X509Certificate x509Certificate = null;
+        try {
+            if (StringUtils.equals(IdentityApplicationConstants.RESIDENT_IDP_RESERVED_NAME,
+                    idp.getIdentityProviderName())) {
+                x509Certificate = (X509Certificate) OAuth2Util.getCertificate(tenantDomain);
+            } else {
+                x509Certificate =
+                        (X509Certificate) IdentityApplicationManagementUtil
+                                .decodeCertificate(certificateInfo.getCertValue());
+            }
+        } catch (CertificateException e) {
+            handleException("Error occurred while decoding public certificate of Identity Provider "
+                    + idp.getIdentityProviderName() + " for tenant domain " + tenantDomain, e);
+        }
+        return x509Certificate;
+    }
+
     /**
      * Check the validity of the x509Certificate.
      *
@@ -952,7 +1062,7 @@ public class TokenExchangeUtils {
             }
             if (!isRegisteredClaim) {
                 Object value = entry.getValue();
-                if (value instanceof JSONArray) {
+                if (value instanceof ArrayList) {
                     String multiValueSeparator = FrameworkUtils.getMultiAttributeSeparator();
                     String multiValuesWithSeparator = StringUtils.join((Collection) value, multiValueSeparator);
                     customClaimMap.put(entry.getKey(), multiValuesWithSeparator);
@@ -1039,42 +1149,25 @@ public class TokenExchangeUtils {
     private static boolean validateUsingCertificate(SignedJWT signedJWT, IdentityProvider idp, String tenantDomain)
             throws IdentityOAuth2Exception, JOSEException {
 
-        JWSVerifier verifier = null;
-        JWSHeader header = signedJWT.getHeader();
-        X509Certificate x509Certificate = resolveSignerCertificate(idp, tenantDomain);
-        if (x509Certificate == null) {
-            handleException("Unable to locate certificate for Identity Provider " + idp.getDisplayName() + "; JWT "
-                    + header.toString());
-        }
+        CertificateInfo[] certificateInfos = idp.getCertificateInfoArray();
 
-        checkCertificateValidity(x509Certificate);
-
-        String alg = signedJWT.getHeader().getAlgorithm().getName();
-        if (StringUtils.isEmpty(alg)) {
-            handleException("Algorithm must not be null.");
+        if (certificateInfos.length <= 1) {
+            X509Certificate x509Certificate = resolveSignerCertificate(idp, tenantDomain);
+            return verifySignature(x509Certificate, signedJWT, idp);
         } else {
-            if (log.isDebugEnabled()) {
-                log.debug("Signature Algorithm found in the JWT Header: " + alg);
-            }
-            if (alg.startsWith("RS")) {
-                // At this point 'x509Certificate' will never be null.
-                PublicKey publicKey = x509Certificate.getPublicKey();
-                if (publicKey instanceof RSAPublicKey) {
-                    verifier = new RSASSAVerifier((RSAPublicKey) publicKey);
-                } else {
-                    handleException("Public key is not an RSA public key.");
-                }
-            } else {
-                if (log.isDebugEnabled()) {
-                    log.debug("Signature Algorithm not supported yet : " + alg);
+            // Iterate through each configured certificate to try signature verification.
+            for (CertificateInfo certificateInfo: certificateInfos) {
+                X509Certificate x509Certificate = resolveSignerCertificate(idp, tenantDomain, certificateInfo);
+
+                // If any of the configured certificates successfully verifies the signature, the verification
+                // is considered successful.
+                if (verifySignature(x509Certificate, signedJWT, idp)) {
+                    return true;
                 }
             }
-            if (verifier == null) {
-                handleException("Could not create a signature verifier for algorithm type: " + alg);
-            }
+            // Return false if no certificate could successfully verify the JWT.
+            return false;
         }
-        // At this point 'verifier' will never be null;
-        return signedJWT.verify(verifier);
     }
 
     /**
@@ -1092,7 +1185,7 @@ public class TokenExchangeUtils {
         User user = null;
 
         try {
-            for (Map.Entry<String, String > claim : claims.entrySet()) {
+            for (Map.Entry<String, String> claim : claims.entrySet()) {
                 List<User> users = userStoreManager.getUserListWithID(claim.getKey(), claim.getValue(), null);
                     if (users.size() == 1) {
                         user = users.get(0);
@@ -1149,8 +1242,16 @@ public class TokenExchangeUtils {
                     if (claimMapping.getLocalClaim().getClaimUri().equals(lookupAttribute)) {
                         String mappedIdpClaim = claimMapping.getRemoteClaim().getClaimUri();
                         if (claimsSet.getClaim(mappedIdpClaim) != null) {
+                            Object claimValue;
+                            if (claimsSet.getClaim(mappedIdpClaim) instanceof List) {
+                                claimValue = IdentityUtil.convertToJSONArray((List) claimsSet.getClaim(mappedIdpClaim));
+                            } else if (claimsSet.getClaim(mappedIdpClaim) instanceof Map) {
+                                claimValue = IdentityUtil.convertToJSONObject((Map) claimsSet.getClaim(mappedIdpClaim));
+                            } else {
+                                claimValue = claimsSet.getClaim(mappedIdpClaim);
+                            }
                             localClaims.put(claimMapping.getLocalClaim().getClaimUri(),
-                                    claimsSet.getClaim(mappedIdpClaim).toString());
+                                    IdentityUtil.convertToJson(claimValue).toString());
                         }
                     }
                 }
@@ -1166,9 +1267,9 @@ public class TokenExchangeUtils {
                     if (ArrayUtils.contains(lookupAttributes, oidcClaim.getMappedLocalClaim()) &&
                             claimsSet.getClaim(oidcClaim.getClaimURI()) != null &&
                             !localClaims.containsKey(oidcClaim.getMappedLocalClaim())) {
+                        Object claimValue = claimsSet.getClaim(oidcClaim.getClaimURI());
                         localClaims.put(oidcClaim.getMappedLocalClaim(),
-                                claimsSet.getClaim(oidcClaim.getClaimURI()).toString());
-
+                                IdentityUtil.convertToJson(claimValue).toString());
                     }
                 }
             } catch (ClaimMetadataException e) {
@@ -1266,5 +1367,45 @@ public class TokenExchangeUtils {
             CarbonConstants.AUDIT_LOG.info(String.format(Constants.AuditConstants.AUDIT_MESSAGE, initiator, action,
                     target, dataObject, result));
         }
+    }
+
+    private static boolean verifySignature(X509Certificate x509Certificate, SignedJWT signedJWT, IdentityProvider idp)
+            throws JOSEException, IdentityOAuth2Exception {
+
+        JWSVerifier verifier = null;
+        JWSHeader header = signedJWT.getHeader();
+        if (x509Certificate == null) {
+            handleException("Unable to locate certificate for Identity Provider " + idp.getDisplayName() + "; JWT "
+                    + header.toString());
+        }
+
+        checkCertificateValidity(x509Certificate);
+
+        String alg = signedJWT.getHeader().getAlgorithm().getName();
+        if (StringUtils.isEmpty(alg)) {
+            handleException("Algorithm must not be null.");
+        } else {
+            if (log.isDebugEnabled()) {
+                log.debug("Signature Algorithm found in the JWT Header: " + alg);
+            }
+            if (alg.startsWith("RS")) {
+                // At this point 'x509Certificate' will never be null.
+                PublicKey publicKey = x509Certificate.getPublicKey();
+                if (publicKey instanceof RSAPublicKey) {
+                    verifier = new RSASSAVerifier((RSAPublicKey) publicKey);
+                } else {
+                    handleException("Public key is not an RSA public key.");
+                }
+            } else {
+                if (log.isDebugEnabled()) {
+                    log.debug("Signature Algorithm not supported yet : " + alg);
+                }
+            }
+            if (verifier == null) {
+                handleException("Could not create a signature verifier for algorithm type: " + alg);
+            }
+        }
+        // At this point 'verifier' will never be null;
+        return signedJWT.verify(verifier);
     }
 }
