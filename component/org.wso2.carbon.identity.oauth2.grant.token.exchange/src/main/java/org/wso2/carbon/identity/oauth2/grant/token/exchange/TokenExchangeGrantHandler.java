@@ -477,6 +477,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     @Override
     public OAuth2AccessTokenRespDTO issue(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
 
+        OAuth2AccessTokenRespDTO tokenRespDTO = super.issue(tokReqMsgCtx);
+        if (tokenRespDTO.isError()) {
+            return tokenRespDTO;
+        }
         AuthenticatedUser user = tokReqMsgCtx.getAuthorizedUser();
         String appResidentOrganizationId = PrivilegedCarbonContext.getThreadLocalCarbonContext().
                 getApplicationResidentOrganizationId();
@@ -752,6 +756,13 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             if (!audienceFound) {
                 TokenExchangeUtils.handleClientException(Constants.TokenExchangeConstants.INVALID_TARGET,
                         "Invalid audience values provided");
+            }
+            // set the audiences in the token request message context
+            if (requestedAudience != null && !requestedAudience.isEmpty()) {
+                List<String> audienceList = Arrays.stream(requestedAudience.split(","))
+                        .map(String::trim)
+                        .collect(Collectors.toList());
+                tokReqMsgCtx.setAudiences(audienceList);
             }
 
             try {
