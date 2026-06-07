@@ -38,7 +38,6 @@ import org.wso2.carbon.identity.event.IdentityEventException;
 import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLockException;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
-import static org.wso2.carbon.identity.oauth.common.OAuthConstants.REQUESTED_AUDIENCE;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.config.exceptions.OAuth2OIDCConfigOrgUsageScopeMgtServerException;
 import org.wso2.carbon.identity.oauth2.config.utils.OAuth2OIDCConfigOrgUsageScopeUtils;
@@ -82,6 +81,7 @@ import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IS_DELEGATION_REQUEST;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OIDCClaims.AZP;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OIDCClaims.CLIENT_ID;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.REQUESTED_AUDIENCE;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.MAY_ACT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ORG_ID;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUB;
