@@ -67,6 +67,8 @@ import static org.wso2.carbon.identity.oauth.common.OAuthConstants.EXISTING_ACT_
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IS_DELEGATION_REQUEST;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OIDCClaims.AZP;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.SCOPE;
 
 /**
  * Unit tests for {@link TokenExchangeGrantHandler}.
