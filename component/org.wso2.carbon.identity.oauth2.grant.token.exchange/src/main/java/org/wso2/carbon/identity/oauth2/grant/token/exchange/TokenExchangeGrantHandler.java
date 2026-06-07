@@ -150,8 +150,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         Map<String, Object> actClaim = (Map<String, Object>) rawActClaim;
 
-        // Act exists but missing required 'sub' = INVALID TOKEN
-        if (actClaim.get(SUB) == null) {
+        // Act exists but missing or blank required 'sub' = INVALID TOKEN
+        if (actClaim.get(SUB) == null || StringUtils.isBlank(actClaim.get(SUB).toString())) {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST,
                 "Invalid act claim: missing required 'sub' field as per RFC 8693");
         }
@@ -238,26 +238,26 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
             // Detect self-delegation: no actor token, and the subject token was issued to the
             // requesting client (azp == currentClientId). The 'sub' may be a user UUID
-            // (APPLICATION_USER flow) or the client itself (client-credentials flow) — we do
-            // NOT require sub == clientId here, because that would exclude user-delegated tokens.
             String currentClientId = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
             String tokenClientId = resolveTokenClientId(subjectClaimsSet);
             boolean isSelfDelegation = tokenClientId != null
                     && tokenClientId.equals(currentClientId)
                     && !requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN);
 
+            // Extract existing act claim from subject token once — used by both self and standard delegation.
+            Map<String, Object> existingActClaim = extractActClaim(subjectClaimsSet);
+
             if (isSelfDelegation) {
-                // Self-delegation: the current application is implicitly the actor.
-                // No actor token is present or required.
+                // isDelegationRequest() guarantees existingActClaim is non-null for self-delegation.
+                // Carry the subject token's act claim forward as-is — the re-exchanging application
+                // must not alter the established delegation chain.
                 if (log.isDebugEnabled()) {
                     log.debug("Processing self-delegation request. Current application '" + currentClientId
-                            + "' is implicitly acting as the actor.");
+                            + "' is implicitly acting as the actor. Carrying forward existing act claim.");
                 }
-                // Populate DELEGATING_ACTOR, ACTOR_SUBJECT, and ACTOR_AZP with the current
-                // application's client ID — mirrors what standard delegation extracts from the actor token.
+                tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
+                tokReqMsgCtx.addProperty(ACTOR_SUBJECT, existingActClaim.get(SUB));
                 tokReqMsgCtx.addProperty(DELEGATING_ACTOR, currentClientId);
-                tokReqMsgCtx.addProperty(ACTOR_SUBJECT, currentClientId);
-                tokReqMsgCtx.addProperty(ACTOR_AZP, currentClientId);
             } else {
                 // Standard delegation: actor token is required; validate and extract subject from it.
                 validateActorTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
@@ -276,14 +276,12 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                         log.debug("Actor AZP: " + actorAzpClaim.toString());
                     }
                 }
-            }
-
-            Map<String, Object> existingActClaim = extractActClaim(subjectClaimsSet);
-            if (existingActClaim != null) {
-                tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
-                if (log.isDebugEnabled()) {
-                    List<String> existingActorChain = extractActorChain(existingActClaim);
-                    log.debug("Found existing act claim chain: " + existingActorChain);
+                if (existingActClaim != null) {
+                    tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
+                    if (log.isDebugEnabled()) {
+                        List<String> existingActorChain = extractActorChain(existingActClaim);
+                        log.debug("Found existing act claim chain: " + existingActorChain);
+                    }
                 }
             }
             setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
@@ -370,12 +368,15 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             return true;
         }
 
-        // Self-delegation: no actor token, and the subject token was issued to the requesting
-        // client (azp == currentClientId). The sub may be a user UUID (APPLICATION_USER) or the
-        // client itself (CC token) — sub == clientId is NOT required here.
+        // Self-delegation: no actor token, the subject token was issued to the requesting client
+        // (azp == currentClientId), AND the subject token already carries an act claim from a
+        // previous delegation. Without an existing act claim there is no delegation chain to carry
+        // forward — the request is treated as regular token exchange instead.
         String currentClientId = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
         String tokenClientId = resolveTokenClientId(subjectClaimsSet);
-        return tokenClientId != null && tokenClientId.equals(currentClientId);
+        return tokenClientId != null
+                && tokenClientId.equals(currentClientId)
+                && subjectClaimsSet.getClaim(ACT) != null;
     }
 
     /**
@@ -656,6 +657,22 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                                                  String tenantDomain)
             throws IdentityOAuth2Exception {
 
+        // Only JWT-based access tokens are accepted as actor tokens.
+        // Generic JWT type is excluded to prevent ID tokens from being used as actor tokens.
+        String actorTokenType = requestParams.get(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
+        if (!TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(actorTokenType)) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Unsupported actor token type: " + actorTokenType
+                            + ". Supported type: " + TokenExchangeConstants.ACCESS_TOKEN_TYPE);
+        }
+
+        // The access token must be a JWT.
+        if (!isJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN))) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Actor token type is " + TokenExchangeConstants.ACCESS_TOKEN_TYPE
+                            + " but the provided token is not a JWT. Only JWT-based access tokens are supported.");
+        }
+
         // Retrieve the signed JWT object from the request parameters
         SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
         if (signedJWT == null) {
@@ -695,6 +712,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         // Validate the issuer of the actor token
         validateTokenIssuer(jwtIssuer, tenantDomain);
+
+        // Verify the actor subject is a registered local user.
+        validateActorSubject(tokReqMsgCtx, actorTokenSubject);
 
         tokReqMsgCtx.addProperty(DELEGATING_ACTOR, actorTokenSubject);
     }
@@ -811,6 +831,40 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             } finally {
                 IdentityUtil.threadLocalProperties.get().remove(IdentityCoreConstants.SKIP_LOCAL_USER_CLAIM_UPDATE);
             }
+        }
+    }
+
+    private void validateActorSubject(OAuthTokenReqMessageContext tokReqMsgCtx, String actorSubject)
+            throws IdentityOAuth2Exception {
+
+        if (StringUtils.isBlank(actorSubject)) {
+            handleException(OAuth2ErrorCodes.ACCESS_DENIED,
+                    "Actor token subject (sub) is missing or blank.");
+        }
+
+        AbstractUserStoreManager userStoreManager = TokenExchangeUtils.getUserStoreManager(tokReqMsgCtx);
+
+        try {
+            String resolvedUserName = userStoreManager.getUserNameFromUserID(actorSubject);
+            if (StringUtils.isNotBlank(resolvedUserName)) {
+                return;
+            }
+        } catch (UserStoreException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("Actor subject '" + actorSubject +
+                        "' did not resolve as a user ID; trying as a username.", e);
+            }
+        }
+
+        try {
+            if (!userStoreManager.isExistingUser(actorSubject)) {
+                handleException(OAuth2ErrorCodes.ACCESS_DENIED,
+                        "Actor token subject '" + actorSubject +
+                                "' is not a registered user in the identity store. " +
+                                "Delegation chain integrity cannot be guaranteed.");
+            }
+        } catch (UserStoreException e) {
+            handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
         }
     }
 

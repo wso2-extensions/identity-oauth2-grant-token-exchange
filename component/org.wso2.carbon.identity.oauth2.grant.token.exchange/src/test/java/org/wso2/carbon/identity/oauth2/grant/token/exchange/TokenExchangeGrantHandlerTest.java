@@ -42,6 +42,7 @@ import org.wso2.carbon.identity.oauth2.model.RequestParameter;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.identity.organization.management.service.util.OrganizationManagementUtil;
+import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -397,6 +398,8 @@ public class TokenExchangeGrantHandlerTest {
         KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
         KeyPair keyPair = keyGenerator.generateKeyPair();
         Instant now = Instant.now();
+        Map<String, Object> existingAct = new HashMap<>();
+        existingAct.put("sub", ACTOR_SUBJECT_ID);
         JWTClaimsSet selfDelegationClaims = new JWTClaimsSet.Builder()
                 .issuer(ISSUER)
                 .subject(IMPERSONATED_SUBJECT_ID)
@@ -406,6 +409,7 @@ public class TokenExchangeGrantHandlerTest {
                 .notBeforeTime(Date.from(now))
                 .claim("azp", CLIENT_ID)
                 .claim("scope", "default")
+                .claim("act", existingAct)
                 .build();
         SignedJWT subjectToken = signJWT(keyPair, selfDelegationClaims);
 
@@ -423,8 +427,8 @@ public class TokenExchangeGrantHandlerTest {
         Assert.assertTrue(isValid);
         Assert.assertEquals(ctx.getProperty(IS_DELEGATION_REQUEST), true);
         Assert.assertEquals(ctx.getProperty(DELEGATING_ACTOR), CLIENT_ID);
-        Assert.assertEquals(ctx.getProperty(ACTOR_SUBJECT), CLIENT_ID);
-        Assert.assertEquals(ctx.getProperty(ACTOR_AZP), CLIENT_ID);
+        Assert.assertEquals(ctx.getProperty(ACTOR_SUBJECT), ACTOR_SUBJECT_ID);
+//        Assert.assertEquals(ctx.getProperty(ACTOR_AZP), CLIENT_ID);
     }
 
     @Test
@@ -635,14 +639,14 @@ public class TokenExchangeGrantHandlerTest {
 
         return new RequestParameter[]{
                 new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE,
-                        Constants.TokenExchangeConstants.JWT_TOKEN_TYPE),
+                        Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE),
                 new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN, subjectToken.serialize()),
                 new RequestParameter("grant_type", Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE),
                 new RequestParameter(Constants.TokenExchangeConstants.REQUESTED_TOKEN_TYPE,
                         Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE),
                 new RequestParameter(Constants.TokenExchangeConstants.ACTOR_TOKEN, actorToken.serialize()),
                 new RequestParameter(Constants.TokenExchangeConstants.ACTOR_TOKEN_TYPE,
-                        Constants.TokenExchangeConstants.JWT_TOKEN_TYPE),
+                        Constants.TokenExchangeConstants.ACCESS_TOKEN_TYPE),
         };
     }
 
@@ -672,6 +676,18 @@ public class TokenExchangeGrantHandlerTest {
                 .thenReturn(actorToken.getJWTClaimsSet());
         tokenExchangeUtils.when(() -> TokenExchangeUtils.validateSignature(actorToken, idp, "carbon.super"))
                 .thenReturn(true);
+        oAuth2Util.when(() -> OAuth2Util.isJWT(actorToken.serialize())).thenReturn(true);
+        AbstractUserStoreManager mockUserStoreManager = Mockito.mock(AbstractUserStoreManager.class);
+        try {
+            Mockito.doReturn("actorUser").when(mockUserStoreManager).getUserNameFromUserID(ACTOR_SUBJECT_ID);
+        } catch (org.wso2.carbon.user.core.UserStoreException e) {
+            throw new RuntimeException(e);
+        }
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.getUserStoreManager(Mockito.any()))
+                .thenReturn(mockUserStoreManager);
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.setAuthorizedUserForImpersonation(
+                        Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.any(), Mockito.anyString()))
+                .thenAnswer(invocation -> null);
     }
 
     private void prepareTokenUtilsForSelfDelegation(SignedJWT subjectToken) throws ParseException {
@@ -682,6 +698,9 @@ public class TokenExchangeGrantHandlerTest {
                 .thenReturn(subjectToken.getJWTClaimsSet());
         tokenExchangeUtils.when(() -> TokenExchangeUtils.validateSignature(subjectToken, idp, "carbon.super"))
                 .thenReturn(true);
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.setAuthorizedUserForImpersonation(
+                        Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.any(), Mockito.anyString()))
+                .thenAnswer(invocation -> null);
     }
 
     @AfterTest
