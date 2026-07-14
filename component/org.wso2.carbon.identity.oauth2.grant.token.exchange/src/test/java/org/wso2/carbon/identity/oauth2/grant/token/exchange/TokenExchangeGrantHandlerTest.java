@@ -66,7 +66,6 @@ import static org.wso2.carbon.identity.oauth.common.OAuthConstants.DELEGATING_AC
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.EXISTING_ACT_CLAIM;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
-import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IS_DELEGATION_REQUEST;
 
 /**
  * Unit tests for {@link TokenExchangeGrantHandler}.
@@ -386,21 +385,21 @@ public class TokenExchangeGrantHandlerTest {
         boolean isValid = tokenExchangeGrantHandler.validateGrant(ctx);
 
         Assert.assertTrue(isValid);
-        Assert.assertEquals(ctx.getProperty(IS_DELEGATION_REQUEST), true);
+        Assert.assertTrue(ctx.isDelegationRequest());
         Assert.assertEquals(ctx.getProperty(ACTOR_SUBJECT), ACTOR_SUBJECT_ID);
         Assert.assertEquals(ctx.getProperty(ACTOR_AZP), ACTOR_CLIENT_ID);
         Assert.assertEquals(ctx.getProperty(DELEGATING_ACTOR), ACTOR_SUBJECT_ID);
     }
 
     @Test
-    public void testValidateSelfDelegation() throws Exception {
+    public void testValidateDelegationReExchange() throws Exception {
 
         KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
         KeyPair keyPair = keyGenerator.generateKeyPair();
         Instant now = Instant.now();
         Map<String, Object> existingAct = new HashMap<>();
         existingAct.put("sub", ACTOR_SUBJECT_ID);
-        JWTClaimsSet selfDelegationClaims = new JWTClaimsSet.Builder()
+        JWTClaimsSet delegationReExchangeClaims = new JWTClaimsSet.Builder()
                 .issuer(ISSUER)
                 .subject(IMPERSONATED_SUBJECT_ID)
                 .audience(CLIENT_ID)
@@ -411,21 +410,21 @@ public class TokenExchangeGrantHandlerTest {
                 .claim("scope", "default")
                 .claim("act", existingAct)
                 .build();
-        SignedJWT subjectToken = signJWT(keyPair, selfDelegationClaims);
+        SignedJWT subjectToken = signJWT(keyPair, delegationReExchangeClaims);
 
         OAuth2AccessTokenReqDTO reqDTO = new OAuth2AccessTokenReqDTO();
         reqDTO.setClientId(CLIENT_ID);
         reqDTO.setGrantType(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
         reqDTO.setTenantDomain("carbon.super");
         reqDTO.setScope(new String[]{"default"});
-        reqDTO.setRequestParameters(buildSelfDelegationRequestParams(subjectToken));
+        reqDTO.setRequestParameters(buildDelegationReExchangeRequestParams(subjectToken));
         OAuthTokenReqMessageContext ctx = new OAuthTokenReqMessageContext(reqDTO);
 
-        prepareTokenUtilsForSelfDelegation(subjectToken);
+        prepareTokenUtilsForDelegationReExchange(subjectToken);
         boolean isValid = tokenExchangeGrantHandler.validateGrant(ctx);
 
         Assert.assertTrue(isValid);
-        Assert.assertEquals(ctx.getProperty(IS_DELEGATION_REQUEST), true);
+        Assert.assertTrue(ctx.isDelegationRequest());
         Assert.assertEquals(ctx.getProperty(DELEGATING_ACTOR), CLIENT_ID);
         Assert.assertEquals(ctx.getProperty(ACTOR_SUBJECT), ACTOR_SUBJECT_ID);
 //        Assert.assertEquals(ctx.getProperty(ACTOR_AZP), CLIENT_ID);
@@ -465,7 +464,7 @@ public class TokenExchangeGrantHandlerTest {
         boolean isValid = tokenExchangeGrantHandler.validateGrant(ctx);
 
         Assert.assertTrue(isValid);
-        Assert.assertEquals(ctx.getProperty(IS_DELEGATION_REQUEST), true);
+        Assert.assertTrue(ctx.isDelegationRequest());
         Assert.assertNotNull(ctx.getProperty(EXISTING_ACT_CLAIM), "Existing act claim must be preserved on context");
     }
 
@@ -586,7 +585,7 @@ public class TokenExchangeGrantHandlerTest {
         };
     }
 
-    private RequestParameter[] buildSelfDelegationRequestParams(SignedJWT subjectToken) {
+    private RequestParameter[] buildDelegationReExchangeRequestParams(SignedJWT subjectToken) {
 
         return new RequestParameter[]{
                 new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE,
@@ -626,7 +625,7 @@ public class TokenExchangeGrantHandlerTest {
                 .thenAnswer(invocation -> null);
     }
 
-    private void prepareTokenUtilsForSelfDelegation(SignedJWT subjectToken) throws ParseException {
+    private void prepareTokenUtilsForDelegationReExchange(SignedJWT subjectToken) throws ParseException {
 
         tokenExchangeUtils.when(() -> TokenExchangeUtils.getSignedJWT(subjectToken.serialize()))
                 .thenReturn(subjectToken);
