@@ -72,14 +72,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACT;
-import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACTOR_AZP;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACTOR_SUBJECT;
-import static org.wso2.carbon.identity.oauth.common.OAuthConstants.DELEGATING_ACTOR;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.EXISTING_ACT_CLAIM;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
-import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OIDCClaims.AZP;
-import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OIDCClaims.CLIENT_ID;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.MAY_ACT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ORG_ID;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUB;
@@ -163,34 +159,26 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
             return true;
 
-        } else if (isDelegationRequest(requestParams, subjectClaimsSet, tokReqMsgCtx)) {
-            // Delegation: subject token has no may_act; actor token present or same-client
-            // subject token with an existing act claim.
+        } else if (isDelegationRequest(requestParams, subjectClaimsSet)) {
+            // Delegation: subject token has act claim or new actor token is present.
             tokReqMsgCtx.setDelegationRequest(true);
             handleJWTSubjectToken(requestParams, tokReqMsgCtx, tenantDomain, requestedAudience);
-            Map<String, Object> existingActClaim = extractActClaim(subjectClaimsSet);
+            if (tokReqMsgCtx.getAuthorizedUser() != null && !tokReqMsgCtx.getAuthorizedUser().isFederatedUser()) {
+                validateLocalUser(tokReqMsgCtx, requestParams);
+            }
 
-            if (!requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)) {
-                // No new actor: isDelegationRequest() guarantees an existing act claim, which is carried
-                // forward unchanged so the re-exchanging application cannot alter the delegation chain.
-                String currentClientId = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
-                if (log.isDebugEnabled()) {
-                    log.debug("Delegation re-exchange without a new actor by application: " + currentClientId);
-                }
+            // Preserve any existing act claim from a previous delegation as the base of the chain.
+            Map<String, Object> existingActClaim = extractActClaim(subjectClaimsSet);
+            if (existingActClaim != null) {
                 tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
-                tokReqMsgCtx.addProperty(ACTOR_SUBJECT, existingActClaim.get(SUB));
-                tokReqMsgCtx.addProperty(DELEGATING_ACTOR, currentClientId);
-            } else {
-                // An actor token is present: validate it (parses the actor token once and sets the
-                // ACTOR_SUBJECT, ACTOR_AZP and DELEGATING_ACTOR properties).
-                validateActorTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain);
-                if (existingActClaim != null) {
-                    tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
-                    if (log.isDebugEnabled()) {
-                        List<String> existingActorChain = extractActorChain(existingActClaim);
-                        log.debug("Found existing act claim chain: " + existingActorChain);
-                    }
+                if (log.isDebugEnabled()) {
+                    log.debug("Found existing act claim chain: " + extractActorChain(existingActClaim));
                 }
+            }
+
+            // A new actor token, when present, adds the next level to the delegation chain.
+            if (requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)) {
+                validateActorTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain, existingActClaim);
             }
             return true;
 
@@ -238,20 +226,17 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
     /**
      * Checks if the token request is a delegation request.
-     * Delegation occurs when:
+     * Delegation occurs when the subject token has no may_act claim and either:
      * <ul>
-     *   <li>An actor token is provided and the subject token has no may_act claim, OR</li>
-     *   <li>No actor token is present, but the subject token was issued to the requesting
-     *       client and already carries an act claim from a previous delegation</li>
+     *   <li>The subject token already carries an act claim from a previous delegation, OR</li>
+     *   <li>A new actor token is presented.</li>
      * </ul>
      *
      * @param requestParams    request parameter map.
      * @param subjectClaimsSet claims from the subject token.
-     * @param tokReqMsgCtx     token request message context.
      * @return true if the request is a delegation request, false otherwise.
      */
-    private boolean isDelegationRequest(Map<String, String> requestParams, JWTClaimsSet subjectClaimsSet,
-                                        OAuthTokenReqMessageContext tokReqMsgCtx) {
+    private boolean isDelegationRequest(Map<String, String> requestParams, JWTClaimsSet subjectClaimsSet) {
 
         if (!requestParams.containsKey(SUBJECT_TOKEN) ||
                 !requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)) {
@@ -265,20 +250,14 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         if (subjectClaimsSet.getClaim(MAY_ACT) != null) {
             return false;
         }
-
-        // An actor token is present
-        if (requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN) &&
-                requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE)) {
+        // The subject token already carries an act claim from a previous delegation.
+        if (subjectClaimsSet.getClaim(ACT) != null) {
             return true;
         }
 
-        // No actor token: the subject token must have been issued to the requesting client
-        // and must already carry an act claim from a previous delegation.
-        String currentClientId = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
-        String tokenClientId = resolveTokenClientId(subjectClaimsSet);
-        return tokenClientId != null
-                && tokenClientId.equals(currentClientId)
-                && subjectClaimsSet.getClaim(ACT) != null;
+        // Otherwise, delegation requires a new actor token to be presented.
+        return requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN) &&
+                requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
     }
 
     /**
@@ -345,25 +324,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         return actorChain;
-    }
-
-    /**
-     * Resolves the client identifier from a JWT claims set.
-     * Checks the 'azp' (authorized party) claim first — which is how WSO2 IS stamps the
-     * issuing client on JWT access tokens — and falls back to the 'client_id' claim for
-     * tokens from other issuers.
-     *
-     * @param claimsSet JWT claims to inspect.
-     * @return the client identifier string, or {@code null} if neither claim is present.
-     */
-    private String resolveTokenClientId(JWTClaimsSet claimsSet) {
-
-        Object azp = claimsSet.getClaim(AZP);
-        if (azp != null) {
-            return azp.toString();
-        }
-        Object clientId = claimsSet.getClaim(CLIENT_ID);
-        return clientId != null ? clientId.toString() : null;
     }
 
     /**
@@ -545,14 +505,17 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * matches an impersonator from the may_act claim, since delegation doesn't use
      * may_act.
      *
-     * @param tokReqMsgCtx  OauthTokenReqMessageContext
-     * @param requestParams A Map<String, String> containing the request parameters.
-     * @param tenantDomain  The tenant domain associated with the request.
+     * @param tokReqMsgCtx    OauthTokenReqMessageContext
+     * @param requestParams   A Map<String, String> containing the request parameters.
+     * @param tenantDomain    The tenant domain associated with the request.
+     * @param existingActClaim The act claim already present on the subject token (the current
+     *                         delegation chain), or {@code null} if there is none.
      * @throws IdentityOAuth2Exception If there's an error during token validation.
      */
     private void validateActorTokenForDelegation(OAuthTokenReqMessageContext tokReqMsgCtx,
                                                  Map<String, String> requestParams,
-                                                 String tenantDomain)
+                                                 String tenantDomain,
+                                                 Map<String, Object> existingActClaim)
             throws IdentityOAuth2Exception {
 
         // Only JWT-based access tokens are accepted as actor tokens.
@@ -614,18 +577,22 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         // Verify the actor subject is a registered local user.
         validateActorSubject(tokReqMsgCtx, actorTokenSubject);
 
-        tokReqMsgCtx.addProperty(ACTOR_SUBJECT, actorTokenSubject);
-        if (log.isDebugEnabled()) {
-            log.debug("Processing delegation request with actor subject: " + actorTokenSubject);
+        // Determine the current top of the delegation chain (the most recent actor).
+        String existingActorSubject = null;
+        if (existingActClaim != null && existingActClaim.get(SUB) != null) {
+            existingActorSubject = existingActClaim.get(SUB).toString();
         }
-        Object actorAzpClaim = claimsSet.getClaim(AZP);
-        if (actorAzpClaim != null) {
-            tokReqMsgCtx.addProperty(ACTOR_AZP, actorAzpClaim.toString());
+
+        // Only add a new delegation level when the actor differs from the current top of the chain.
+        if (!StringUtils.equals(actorTokenSubject, existingActorSubject)) {
+            tokReqMsgCtx.addProperty(ACTOR_SUBJECT, actorTokenSubject);
             if (log.isDebugEnabled()) {
-                log.debug("Actor AZP: " + actorAzpClaim);
+                log.debug("Adding new delegation level for actor subject: " + actorTokenSubject);
             }
+        } else if (log.isDebugEnabled()) {
+            log.debug("Actor '" + actorTokenSubject + "' matches the current top of the delegation chain; "
+                    + "carrying the existing act claim forward unchanged.");
         }
-        tokReqMsgCtx.addProperty(DELEGATING_ACTOR, actorTokenSubject);
     }
 
     private void validateTokenIssuer(String jwtIssuer, String tenantDomain) throws IdentityOAuth2Exception {

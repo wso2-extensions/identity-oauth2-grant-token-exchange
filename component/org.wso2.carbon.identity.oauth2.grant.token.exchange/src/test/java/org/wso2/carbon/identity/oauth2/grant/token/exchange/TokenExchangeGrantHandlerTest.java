@@ -60,9 +60,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
-import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACTOR_AZP;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACTOR_SUBJECT;
-import static org.wso2.carbon.identity.oauth.common.OAuthConstants.DELEGATING_ACTOR;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.EXISTING_ACT_CLAIM;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
@@ -387,8 +385,6 @@ public class TokenExchangeGrantHandlerTest {
         Assert.assertTrue(isValid);
         Assert.assertTrue(ctx.isDelegationRequest());
         Assert.assertEquals(ctx.getProperty(ACTOR_SUBJECT), ACTOR_SUBJECT_ID);
-        Assert.assertEquals(ctx.getProperty(ACTOR_AZP), ACTOR_CLIENT_ID);
-        Assert.assertEquals(ctx.getProperty(DELEGATING_ACTOR), ACTOR_SUBJECT_ID);
     }
 
     @Test
@@ -425,9 +421,10 @@ public class TokenExchangeGrantHandlerTest {
 
         Assert.assertTrue(isValid);
         Assert.assertTrue(ctx.isDelegationRequest());
-        Assert.assertEquals(ctx.getProperty(DELEGATING_ACTOR), CLIENT_ID);
-        Assert.assertEquals(ctx.getProperty(ACTOR_SUBJECT), ACTOR_SUBJECT_ID);
-//        Assert.assertEquals(ctx.getProperty(ACTOR_AZP), CLIENT_ID);
+        // No new actor token in a re-exchange: no new delegation level is added...
+        Assert.assertNull(ctx.getProperty(ACTOR_SUBJECT));
+        // ...and the existing act claim is preserved so it can be carried forward unchanged.
+        Assert.assertNotNull(ctx.getProperty(EXISTING_ACT_CLAIM));
     }
 
     @Test
