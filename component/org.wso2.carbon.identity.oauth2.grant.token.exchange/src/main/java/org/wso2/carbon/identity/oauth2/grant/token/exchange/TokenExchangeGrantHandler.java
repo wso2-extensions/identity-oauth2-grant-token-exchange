@@ -793,7 +793,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             return allowedAudiences;
         }
         String requestedAudience = getRequestedAudience(tokReqMsgCtx);
-        if (StringUtils.isBlank(requestedAudience)) {
+        if (requestedAudience == null) {
             return allowedAudiences;
         }
 
@@ -826,10 +826,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         for (RequestParameter param : params) {
             if (TokenExchangeConstants.AUDIENCE.equals(param.getKey())) {
                 String[] values = param.getValue();
-                if (values == null || values.length == 0) {
-                    return null;
-                }
-                return String.join(" ", values);
+                return (values != null && values.length > 0) ? values[0] : null;
             }
         }
         return null;
