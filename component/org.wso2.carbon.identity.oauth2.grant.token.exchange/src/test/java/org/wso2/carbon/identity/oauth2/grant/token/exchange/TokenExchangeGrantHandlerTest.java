@@ -299,7 +299,7 @@ public class TokenExchangeGrantHandlerTest {
         return new Object[][]{
                 {true, false, ISSUER, CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
                 {true, true, ISSUER, CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
-                {false, true, "NegativeIssuer", CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
+                {false, false, "NegativeIssuer", CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
                 {true, true, ISSUER, "NegativeClient", IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
                 {false, false, ISSUER, CLIENT_ID, IMPERSONATOR_ID, true, ISSUER, IMPERSONATOR_ID},
                 {false, false, ISSUER, CLIENT_ID, IMPERSONATOR_ID, false, "NegativeIssuer", IMPERSONATOR_ID},
@@ -609,6 +609,7 @@ public class TokenExchangeGrantHandlerTest {
         tokenExchangeUtils.when(() -> TokenExchangeUtils.validateSignature(actorToken, idp, "carbon.super"))
                 .thenReturn(true);
         oAuth2Util.when(() -> OAuth2Util.isJWT(actorToken.serialize())).thenReturn(true);
+        oAuth2Util.when(() -> OAuth2Util.isJWT(subjectToken.serialize())).thenReturn(true);
         AbstractUserStoreManager mockUserStoreManager = Mockito.mock(AbstractUserStoreManager.class);
         try {
             Mockito.doReturn("actorUser").when(mockUserStoreManager).getUserNameFromUserID(ACTOR_SUBJECT_ID);
