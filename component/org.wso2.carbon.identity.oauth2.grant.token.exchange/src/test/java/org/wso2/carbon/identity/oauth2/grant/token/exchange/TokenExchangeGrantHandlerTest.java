@@ -298,9 +298,8 @@ public class TokenExchangeGrantHandlerTest {
 
         return new Object[][]{
                 {true, false, ISSUER, CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
-                {true, true, ISSUER, CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
                 {false, false, "NegativeIssuer", CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
-                {true, true, ISSUER, "NegativeClient", IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
+                {false, false, ISSUER, "NegativeClient", IMPERSONATOR_ID, false, ISSUER, IMPERSONATOR_ID},
                 {false, false, ISSUER, CLIENT_ID, IMPERSONATOR_ID, true, ISSUER, IMPERSONATOR_ID},
                 {false, false, ISSUER, CLIENT_ID, IMPERSONATOR_ID, false, "NegativeIssuer", IMPERSONATOR_ID},
                 {false, false, ISSUER, CLIENT_ID, IMPERSONATOR_ID, false, ISSUER, "NegativeImpersonator"}
@@ -362,6 +361,11 @@ public class TokenExchangeGrantHandlerTest {
                 .thenReturn(actorToken.getJWTClaimsSet());
         tokenExchangeUtils.when(() -> TokenExchangeUtils.validateSignature(actorToken, idp, "carbon.super"))
                 .thenReturn(true);
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.handleClientException(anyString(), anyString()))
+                .thenAnswer(invocation -> {
+                    throw new IdentityOAuth2ClientException(invocation.getArgument(0, String.class),
+                            invocation.getArgument(1, String.class));
+                });
     }
 
 

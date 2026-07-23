@@ -960,9 +960,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         List<String> audiences = claimsSet.getAudience();
         Map<String, Object> customClaims = new HashMap<>(claimsSet.getClaims());
 
+        validateMandatoryClaims(claimsSet, subject);
         tokReqMsgCtx.addProperty(Constants.EXPIRY_TIME, claimsSet.getExpirationTime());
 
-        validateMandatoryClaims(claimsSet, subject);
         identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
 
         boolean isLocalIdentityProvider = Constants.LOCAL_IDP_NAME.equals(identityProvider.
