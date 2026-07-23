@@ -206,20 +206,27 @@ public class TokenExchangeGrantHandlerTest {
     }
 
     @Test(dataProvider = "invalidRequestedAudienceDataProvider",
-            expectedExceptions = IdentityOAuth2Exception.class)
+            expectedExceptions = IdentityOAuth2ClientException.class)
     public void testResolveAudiencesThrowsForInvalidRequestedAudience(String requestedAudience) throws Exception {
 
         oAuth2Util.when(() -> OAuth2Util.getOIDCAudience(anyString(), any()))
                 .thenReturn(Arrays.asList("https://api.example.com", CLIENT_ID));
 
-        OAuth2AccessTokenReqDTO reqDTO = new OAuth2AccessTokenReqDTO();
-        reqDTO.setClientId(CLIENT_ID);
-        reqDTO.setGrantType(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
-        reqDTO.setRequestParameters(new RequestParameter[]{
-                new RequestParameter(Constants.TokenExchangeConstants.AUDIENCE, requestedAudience)});
-        OAuthTokenReqMessageContext ctx = new OAuthTokenReqMessageContext(reqDTO);
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.handleClientException(anyString(), anyString()))
+                .thenThrow(new IdentityOAuth2ClientException("invalid_target", "Invalid audience value provided"));
+        try {
+            OAuth2AccessTokenReqDTO reqDTO = new OAuth2AccessTokenReqDTO();
+            reqDTO.setClientId(CLIENT_ID);
+            reqDTO.setGrantType(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+            reqDTO.setRequestParameters(new RequestParameter[]{
+                    new RequestParameter(Constants.TokenExchangeConstants.AUDIENCE, requestedAudience)});
+            OAuthTokenReqMessageContext ctx = new OAuthTokenReqMessageContext(reqDTO);
 
-        tokenExchangeGrantHandler.resolveAudiences(ctx, CLIENT_ID, mock(OAuthAppDO.class));
+            tokenExchangeGrantHandler.resolveAudiences(ctx, CLIENT_ID, mock(OAuthAppDO.class));
+        } finally {
+            tokenExchangeUtils.when(() -> TokenExchangeUtils.handleClientException(anyString(), anyString()))
+                    .thenAnswer(invocation -> null);
+        }
     }
 
     @Test

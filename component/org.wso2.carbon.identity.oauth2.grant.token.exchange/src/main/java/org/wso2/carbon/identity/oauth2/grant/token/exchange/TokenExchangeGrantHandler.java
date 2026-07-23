@@ -91,6 +91,7 @@ import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenEx
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getIDP;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getIDPAlias;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getSignedJWT;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleClientException;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleCustomClaims;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleException;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.parseTokenExchangeConfiguration;
@@ -799,10 +800,11 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
 
         String[] audienceValues = requestedAudience.trim().split("\\s+");
         if (audienceValues.length > 1) {
-            handleException(TokenExchangeConstants.INVALID_TARGET, "Multiple audience values provided in the request");
+            handleClientException(TokenExchangeConstants.INVALID_TARGET,
+                    "Multiple audience values provided in the request");
         }
         if (!allowedAudiences.contains(audienceValues[0])) {
-            handleException(TokenExchangeConstants.INVALID_TARGET,
+            handleClientException(TokenExchangeConstants.INVALID_TARGET,
                     "Invalid audience value provided : " + audienceValues[0]);
         }
         if (log.isDebugEnabled()) {
