@@ -58,10 +58,10 @@ import org.wso2.carbon.user.api.UserStoreClientException;
 import org.wso2.carbon.user.core.UserStoreException;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
+import org.wso2.carbon.user.core.util.UserCoreUtil;
 import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -76,6 +76,7 @@ import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACTOR_SUBJECT
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.EXISTING_ACT_CLAIM;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.AZP;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.MAY_ACT;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ORG_ID;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUB;
@@ -150,7 +151,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         SignedJWT subjectSignedJWT = null;
         JWTClaimsSet subjectClaimsSet = null;
 
-        if (hasActorTokenParameters(requestParams)) {
+        if (hasSubjectAndActorTokenParameters(requestParams)) {
             subjectSignedJWT = getSignedJWT(requestParams.get(SUBJECT_TOKEN));
             if (subjectSignedJWT == null) {
                 handleException(OAuth2ErrorCodes.INVALID_REQUEST,
@@ -206,7 +207,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                 if (existingActClaim != null) {
                     tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
                     if (log.isDebugEnabled()) {
-                        log.debug("Found existing act claim chain: " + extractActorChain(existingActClaim));
+                        log.debug("Found an existing act claim chain.");
                     }
                 }
 
@@ -230,7 +231,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * @param requestParams request parameter map.
      * @return true if all four subject/actor token parameters are present.
      */
-    private boolean hasActorTokenParameters(Map<String, String> requestParams) {
+    private boolean hasSubjectAndActorTokenParameters(Map<String, String> requestParams) {
 
         return requestParams.containsKey(SUBJECT_TOKEN)
                 && requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)
@@ -308,39 +309,6 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         return actClaim;
-    }
-
-    /**
-     * Recursively extracts all actor subjects from a nested act claim chain.
-     *
-     * @param actClaim The act claim map (recursive structure)
-     * @return List of actor subjects in order from most recent to oldest
-     */
-    private List<String> extractActorChain(Map<String, Object> actClaim) {
-
-        List<String> actorChain = new ArrayList<>();
-
-        if (actClaim == null) {
-            if (log.isDebugEnabled()) {
-                log.debug("No act claim to extract - returning empty actor chain");
-            }
-            return actorChain;
-        }
-
-        // Extract the actor subject from the current delegation level and add to chain
-        Object subClaim = actClaim.get(SUB);
-        if (subClaim != null) {
-            actorChain.add(subClaim.toString());
-        }
-
-        // Recursively process nested act claim
-        Object nestedActRaw = actClaim.get(ACT);
-        if (nestedActRaw instanceof Map) {
-            Map<String, Object> nestedAct = (Map<String, Object>) nestedActRaw;
-            actorChain.addAll(extractActorChain(nestedAct));
-        }
-
-        return actorChain;
     }
 
     /**
@@ -568,8 +536,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         // Validate the issuer of the actor token
         validateTokenIssuer(jwtIssuer, tenantDomain);
 
-        // Verify the actor subject is a registered local user.
-        validateActorSubject(tokReqMsgCtx, actorTokenSubject);
+        // Verify the actor subject resolves to a registered, active user.
+        validateActorSubject(tokReqMsgCtx, actorTokenSubject, claimsSet);
 
         // Determine the current top of the delegation chain (the most recent actor).
         String existingActorSubject = null;
@@ -581,10 +549,10 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         if (!StringUtils.equals(actorTokenSubject, existingActorSubject)) {
             tokReqMsgCtx.addProperty(ACTOR_SUBJECT, actorTokenSubject);
             if (log.isDebugEnabled()) {
-                log.debug("Adding new delegation level for actor subject: " + actorTokenSubject);
+                log.debug("Adding a new delegation level for the actor token subject.");
             }
         } else if (log.isDebugEnabled()) {
-            log.debug("Actor '" + actorTokenSubject + "' matches the current top of the delegation chain; "
+            log.debug("Actor token subject matches the current top of the delegation chain; "
                     + "carrying the existing act claim forward unchanged.");
         }
     }
@@ -705,37 +673,73 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
     }
 
-    private void validateActorSubject(OAuthTokenReqMessageContext tokReqMsgCtx, String actorSubject)
-            throws IdentityOAuth2Exception {
+    /**
+     * Validate that the actor token subject resolves to a registered, active user.
+     *
+     * @param tokReqMsgCtx  OAuth token request message context.
+     * @param actorSubject  Subject (sub) of the actor token.
+     * @param actorClaimsSet  Claim set of the actor token.
+     * @throws IdentityOAuth2Exception  Identity OAuth2 Exception.
+     */
+    private void validateActorSubject(OAuthTokenReqMessageContext tokReqMsgCtx, String actorSubject,
+                                      JWTClaimsSet actorClaimsSet) throws IdentityOAuth2Exception {
 
         if (StringUtils.isBlank(actorSubject)) {
-            handleException(OAuth2ErrorCodes.ACCESS_DENIED,
-                    "Actor token subject (sub) is missing or blank.");
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Mandatory field - Subject is empty in the given Actor Token");
         }
 
-        AbstractUserStoreManager userStoreManager = TokenExchangeUtils.getUserStoreManager(tokReqMsgCtx);
+        // Resolve the client id from the actor token
+        String clientId = actorClaimsSet.getClaim(AZP) != null ? actorClaimsSet.getClaim(AZP).toString() : null;
+        if (StringUtils.isBlank(clientId)) {
+            clientId = actorClaimsSet.getClaim(SUBJECT_TOKEN_CLIENT_ID) != null ?
+                    actorClaimsSet.getClaim(SUBJECT_TOKEN_CLIENT_ID).toString() : null;
+        }
+        if (StringUtils.isBlank(clientId)) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Unable to resolve the client id from the given Actor Token");
+        }
 
+        String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
+        String userName;
+        String userStoreDomain;
         try {
-            String resolvedUserName = userStoreManager.getUserNameFromUserID(actorSubject);
-            if (StringUtils.isNotBlank(resolvedUserName)) {
+            // Resolve the actor from the store using the application's subject claim.
+            AuthenticatedUser actor =
+                    OAuth2Util.getAuthenticatedUserFromSubjectIdentifier(actorSubject, tenantDomain, clientId);
+            userName = actor.getUserName();
+            userStoreDomain = actor.getUserStoreDomain();
+        } catch (IdentityOAuth2Exception e) {
+            /*
+             The subject could not be resolved by the application's subject claim.
+             Fall back to resolving it as a user id.
+             */
+            if (log.isDebugEnabled()) {
+                log.debug("Could not resolve the actor by the application's subject claim; retrying by treating "
+                        + "the subject as a user id.", e);
+            }
+            AbstractUserStoreManager userStoreManager = TokenExchangeUtils.getUserStoreManager(tokReqMsgCtx);
+            String domainQualifiedUserName;
+            try {
+                domainQualifiedUserName = userStoreManager.getUserNameFromUserID(actorSubject);
+            } catch (UserStoreException ex) {
+                handleException(OAuth2ErrorCodes.SERVER_ERROR, ex);
                 return;
             }
-        } catch (UserStoreException e) {
-            if (log.isDebugEnabled()) {
-                log.debug("Actor subject '" + actorSubject +
-                        "' did not resolve as a user ID; trying as a username.", e);
+            if (StringUtils.isBlank(domainQualifiedUserName)) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                        "Actor token could not be resolved to a registered user.");
+                return;
             }
+            userStoreDomain = UserCoreUtil.extractDomainFromName(domainQualifiedUserName);
+            userName = UserCoreUtil.removeDomainFromName(domainQualifiedUserName);
         }
 
-        try {
-            if (!userStoreManager.isExistingUser(actorSubject)) {
-                handleException(OAuth2ErrorCodes.ACCESS_DENIED,
-                        "Actor token subject '" + actorSubject +
-                                "' is not a registered user in the identity store. " +
-                                "Delegation chain integrity cannot be guaranteed.");
-            }
-        } catch (UserStoreException e) {
-            handleException(OAuth2ErrorCodes.SERVER_ERROR, e);
+        // Validate that the actor account is active, neither locked nor disabled.
+        if (TokenExchangeUtils.isUserAccountLocked(userName, tenantDomain, userStoreDomain)
+                || TokenExchangeUtils.isUserAccountDisabled(userName, tenantDomain, userStoreDomain)) {
+            handleException(OAuth2ErrorCodes.ACCESS_DENIED,
+                    "Actor account is inactive.");
         }
     }
 

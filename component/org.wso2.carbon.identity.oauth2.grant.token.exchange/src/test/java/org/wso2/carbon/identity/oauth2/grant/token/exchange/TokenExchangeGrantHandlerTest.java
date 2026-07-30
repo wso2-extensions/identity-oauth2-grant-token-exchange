@@ -32,6 +32,7 @@ import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.application.common.model.IdentityProviderProperty;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
@@ -469,6 +470,25 @@ public class TokenExchangeGrantHandlerTest {
         Assert.assertNotNull(ctx.getProperty(EXISTING_ACT_CLAIM), "Existing act claim must be preserved on context");
     }
 
+    @Test(expectedExceptions = IdentityOAuth2Exception.class)
+    public void testValidateDelegationActorTokenMissingClientId() throws Exception {
+
+        SignedJWT subjectToken = buildDelegationSubjectToken();
+        SignedJWT actorToken = buildActorTokenForDelegationWithoutClientId();
+
+        OAuth2AccessTokenReqDTO reqDTO = new OAuth2AccessTokenReqDTO();
+        reqDTO.setClientId(CLIENT_ID);
+        reqDTO.setGrantType(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        reqDTO.setTenantDomain("carbon.super");
+        reqDTO.setScope(new String[]{"default"});
+        reqDTO.setRequestParameters(buildDelegationRequestParams(subjectToken, actorToken));
+        OAuthTokenReqMessageContext ctx = new OAuthTokenReqMessageContext(reqDTO);
+
+        prepareTokenUtilsForDelegation(subjectToken, actorToken);
+        // Actor token without azp or client_id cannot be resolved to an application.
+        tokenExchangeGrantHandler.validateGrant(ctx);
+    }
+
     @DataProvider(name = "delegationNegativeTestData")
     public Object[][] delegationNegativeTestData() {
 
@@ -558,6 +578,22 @@ public class TokenExchangeGrantHandlerTest {
         return signJWT(keyPair, claims);
     }
 
+    private SignedJWT buildActorTokenForDelegationWithoutClientId() throws NoSuchAlgorithmException, JOSEException {
+
+        KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
+        KeyPair keyPair = keyGenerator.generateKeyPair();
+        Instant now = Instant.now();
+        JWTClaimsSet claims = new JWTClaimsSet.Builder()
+                .issuer(ISSUER)
+                .subject(ACTOR_SUBJECT_ID)
+                .audience(CLIENT_ID)
+                .issueTime(Date.from(now))
+                .expirationTime(Date.from(Instant.ofEpochSecond(now.getEpochSecond() + 36000)))
+                .notBeforeTime(Date.from(now))
+                .build();
+        return signJWT(keyPair, claims);
+    }
+
     private SignedJWT buildActorTokenForDelegationWithoutExpiry() throws NoSuchAlgorithmException, JOSEException {
 
         KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
@@ -622,6 +658,11 @@ public class TokenExchangeGrantHandlerTest {
         }
         tokenExchangeUtils.when(() -> TokenExchangeUtils.getUserStoreManager(Mockito.any()))
                 .thenReturn(mockUserStoreManager);
+        AuthenticatedUser actorUser = new AuthenticatedUser();
+        actorUser.setUserName("actorUser");
+        oAuth2Util.when(() -> OAuth2Util.getAuthenticatedUserFromSubjectIdentifier(
+                        Mockito.anyString(), Mockito.nullable(String.class), Mockito.anyString()))
+                .thenReturn(actorUser);
         tokenExchangeUtils.when(() -> TokenExchangeUtils.setAuthorizedUserForImpersonation(
                         Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.any(), Mockito.anyString()))
                 .thenAnswer(invocation -> null);
