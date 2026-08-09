@@ -1016,7 +1016,8 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         RequestParameter[] params = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getRequestParameters();
         // Skip the issuer-in-audience check for locally issued tokens; the local issuer is already trusted.
         if (!isLocalIdentityProvider) {
-            audienceFound = validateAudience(audiences, identityProvider, requestedAudience, params, tenantDomain);
+            boolean audienceFound = validateAudience(audiences, identityProvider, requestedAudience, params,
+                    tenantDomain);
             if (!audienceFound) {
                 TokenExchangeUtils.handleClientException(Constants.TokenExchangeConstants.INVALID_TARGET,
                         "Invalid audience values provided");
