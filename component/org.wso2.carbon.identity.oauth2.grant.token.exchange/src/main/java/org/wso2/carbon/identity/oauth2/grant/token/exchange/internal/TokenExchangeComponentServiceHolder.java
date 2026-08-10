@@ -19,6 +19,8 @@ package org.wso2.carbon.identity.oauth2.grant.token.exchange.internal;
 
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
+import org.wso2.carbon.identity.handler.event.account.lock.service.AccountDisableService;
+import org.wso2.carbon.identity.handler.event.account.lock.service.AccountLockService;
 import org.wso2.carbon.identity.oauth2.config.services.OAuth2OIDCConfigOrgUsageScopeMgtService;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.FederatedAssociationManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
@@ -38,6 +40,8 @@ public class TokenExchangeComponentServiceHolder {
     private FederatedAssociationManager federatedAssociationManager;
     private ClaimMetadataManagementService claimMetadataManagementService;
     private OAuth2OIDCConfigOrgUsageScopeMgtService oAuth2OIDCConfigOrgUsageScopeMgtService;
+    private AccountLockService accountLockService;
+    private AccountDisableService accountDisableService;
 
     public static TokenExchangeComponentServiceHolder getInstance() {
         return INSTANCE;
@@ -113,5 +117,25 @@ public class TokenExchangeComponentServiceHolder {
     public OAuth2OIDCConfigOrgUsageScopeMgtService getOAuth2OIDCConfigOrgUsageScopeMgtService() {
 
         return this.oAuth2OIDCConfigOrgUsageScopeMgtService;
+    }
+
+    public AccountLockService getAccountLockService() {
+
+        return accountLockService;
+    }
+
+    public void setAccountLockService(AccountLockService accountLockService) {
+
+        this.accountLockService = accountLockService;
+    }
+
+    public AccountDisableService getAccountDisableService() {
+
+        return accountDisableService;
+    }
+
+    public void setAccountDisableService(AccountDisableService accountDisableService) {
+
+        this.accountDisableService = accountDisableService;
     }
 }

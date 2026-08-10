@@ -58,6 +58,7 @@ import org.wso2.carbon.user.api.UserStoreClientException;
 import org.wso2.carbon.user.core.UserStoreException;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
+import org.wso2.carbon.user.core.util.UserCoreUtil;
 import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
@@ -70,11 +71,16 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACT;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACTOR_SUBJECT;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.EXISTING_ACT_CLAIM;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATED_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
-import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ORG_ID;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.AZP;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.MAY_ACT;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.ORG_ID;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUB;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUBJECT_TOKEN;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.SUBJECT_TOKEN_CLIENT_ID;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.TokenExchangeConstants.USER_ORG;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.checkExpirationTime;
@@ -142,22 +148,73 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         }
 
         String tenantDomain = getTenantDomain(tokReqMsgCtx);
-        if (isImpersonationRequest(requestParams)) {
-            validateSubjectToken(tokReqMsgCtx, requestParams, tenantDomain);
-            validateActorToken(tokReqMsgCtx, requestParams, tenantDomain);
-            // Set impersonation flag
-            tokReqMsgCtx.setImpersonationRequest(true);
-            setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
-            return true;
+        SignedJWT subjectSignedJWT = null;
+        JWTClaimsSet subjectClaimsSet = null;
+
+        if (hasSubjectAndActorTokenParameters(requestParams)) {
+            subjectSignedJWT = getSignedJWT(requestParams.get(SUBJECT_TOKEN));
+            if (subjectSignedJWT == null) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                        "No Valid subject token was found for " + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+            }
+            subjectClaimsSet = getClaimSet(subjectSignedJWT);
+            if (subjectClaimsSet == null) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given Subject Token");
+            }
+
+            if (isImpersonationRequest(subjectClaimsSet)) {
+                // Impersonation: subject token has may_act, actor token is present and pre-authorized.
+                validateSubjectToken(tokReqMsgCtx, tenantDomain, subjectSignedJWT, subjectClaimsSet);
+                validateActorToken(tokReqMsgCtx, requestParams, tenantDomain);
+                tokReqMsgCtx.setImpersonationRequest(true);
+                setSubjectAsAuthorizedUser(tokReqMsgCtx, requestParams, tenantDomain);
+                return true;
+            }
         }
+
         validateRequestedTokenType(requestedTokenType);
 
         if (Constants.TokenExchangeConstants.JWT_TOKEN_TYPE.equals(subjectTokenType) || (Constants
                 .TokenExchangeConstants.ACCESS_TOKEN_TYPE.equals(subjectTokenType)) && isJWT(requestParams
-                .get(Constants.TokenExchangeConstants.SUBJECT_TOKEN))) {
-            handleJWTSubjectToken(requestParams, tokReqMsgCtx, tenantDomain, requestedAudience);
+                .get(SUBJECT_TOKEN))) {
+            if (subjectClaimsSet == null) {
+                subjectSignedJWT = getSignedJWT(requestParams.get(SUBJECT_TOKEN));
+                if (subjectSignedJWT == null) {
+                    handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for "
+                            + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+                }
+                subjectClaimsSet = getClaimSet(subjectSignedJWT);
+                if (subjectClaimsSet == null) {
+                    handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                            "Claim values are empty in the given JSON Web Token");
+                }
+            }
+
+            boolean delegationRequest = isDelegationRequest(requestParams, subjectClaimsSet);
+            if (delegationRequest) {
+                // Delegation: subject token has act claim or new actor token is present.
+                tokReqMsgCtx.setDelegationRequest(true);
+            }
+
+            handleJWTSubjectToken(tokReqMsgCtx, tenantDomain, requestedAudience, subjectSignedJWT, subjectClaimsSet);
             if (tokReqMsgCtx.getAuthorizedUser() != null && !tokReqMsgCtx.getAuthorizedUser().isFederatedUser()) {
                 validateLocalUser(tokReqMsgCtx, requestParams);
+            }
+
+            if (delegationRequest) {
+                // Preserve any existing act claim from a previous delegation as the base of the chain.
+                Map<String, Object> existingActClaim = extractActClaim(subjectClaimsSet);
+                if (existingActClaim != null) {
+                    tokReqMsgCtx.addProperty(EXISTING_ACT_CLAIM, existingActClaim);
+                    if (log.isDebugEnabled()) {
+                        log.debug("Found an existing act claim chain.");
+                    }
+                }
+
+                // A new actor token, when present, adds the next level to the delegation chain.
+                if (requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)) {
+                    validateActorTokenForDelegation(tokReqMsgCtx, requestParams, tenantDomain, existingActClaim);
+                }
             }
         } else {
             handleException(OAuth2ErrorCodes.INVALID_REQUEST,
@@ -166,19 +223,92 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         return true;
     }
 
-    /**
-     * Checks if the token request is an impersonation request by inspecting the provided request parameters.
-     *
-     * @param requestParams A Map<String, String> containing the request parameters.
-     * @return true if the request is an impersonation request and false otherwise.
-     */
-    private boolean isImpersonationRequest(Map<String, String> requestParams) {
 
-        // Check if all required parameters are present
-        return requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN)
+    /**
+     * Checks whether the request carries the subject and actor token parameters required for an
+     * impersonation or delegation token exchange.
+     *
+     * @param requestParams request parameter map.
+     * @return true if all four subject/actor token parameters are present.
+     */
+    private boolean hasSubjectAndActorTokenParameters(Map<String, String> requestParams) {
+
+        return requestParams.containsKey(SUBJECT_TOKEN)
                 && requestParams.containsKey(TokenExchangeConstants.SUBJECT_TOKEN_TYPE)
                 && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN)
                 && requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
+    }
+
+    /**
+     * Checks if the token request is an impersonation request.
+     *
+     * @param subjectClaimsSet claims from the subject token.
+     * @return true if the subject token carries a may_act claim, false otherwise.
+     */
+    private boolean isImpersonationRequest(JWTClaimsSet subjectClaimsSet) {
+
+        // Impersonation requires a may_act claim in the subject token.
+        return subjectClaimsSet.getClaim(MAY_ACT) != null;
+    }
+
+    /**
+     * Checks if the token request is a delegation request.
+     * Delegation occurs when the subject token has no may_act claim and either:
+     * <ul>
+     *   <li>The subject token already carries an act claim from a previous delegation, OR</li>
+     *   <li>A new actor token is presented.</li>
+     * </ul>
+     *
+     * @param requestParams    request parameter map.
+     * @param subjectClaimsSet claims from the subject token.
+     * @return true if the request is a delegation request, false otherwise.
+     */
+    private boolean isDelegationRequest(Map<String, String> requestParams, JWTClaimsSet subjectClaimsSet) {
+
+        // Subject token must not carry a may_act claim.
+        if (subjectClaimsSet.getClaim(MAY_ACT) != null) {
+            return false;
+        }
+        // The subject token already carries an act claim from a previous delegation.
+        if (subjectClaimsSet.getClaim(ACT) != null) {
+            return true;
+        }
+        // Otherwise, delegation requires a new actor token to be presented.
+        return requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN) &&
+                requestParams.containsKey(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
+    }
+
+    /**
+     * Safely extracts and validates the act claim from a JWT claims set.
+     *
+     * @param claimsSet The JWT claims set
+     * @return The act claim as a Map, or null if no act claim is present
+     * @throws IdentityOAuth2Exception if the act claim is present but malformed
+     */
+    private Map<String, Object> extractActClaim(JWTClaimsSet claimsSet) throws IdentityOAuth2Exception {
+
+        Object rawActClaim = claimsSet.getClaim(ACT);
+
+        // No act claim = valid (no delegation)
+        if (rawActClaim == null) {
+            return null;
+        }
+
+        // Act exists but wrong type = INVALID TOKEN
+        if (!(rawActClaim instanceof Map)) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Invalid act claim: expected JSON object, got " + rawActClaim.getClass().getName());
+        }
+
+        Map<String, Object> actClaim = (Map<String, Object>) rawActClaim;
+
+        // Act exists but missing or blank required 'sub' = INVALID TOKEN
+        if (actClaim.get(SUB) == null || StringUtils.isBlank(actClaim.get(SUB).toString())) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Invalid act claim: missing required 'sub' field");
+        }
+
+        return actClaim;
     }
 
     /**
@@ -186,29 +316,15 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
      * Checks if the subject token is signed by the Authorization Server (AS),
      * validates the token claims, and ensures it's intended for the correct audience and issuer.
      *
-     * @param tokReqMsgCtx  OauthTokenReqMessageContext
-     * @param requestParams A Map<String, String> containing the request parameters.
-     * @param tenantDomain  The tenant domain associated with the request.
+     * @param tokReqMsgCtx OauthTokenReqMessageContext
+     * @param tenantDomain The tenant domain associated with the request.
+     * @param signedJWT    The parsed subject token.
+     * @param claimsSet    The claims extracted from the subject token.
      * @throws IdentityOAuth2Exception If there's an error during token validation.
      */
-    private void validateSubjectToken(OAuthTokenReqMessageContext tokReqMsgCtx, Map<String, String> requestParams,
-                                      String tenantDomain)
+    private void validateSubjectToken(OAuthTokenReqMessageContext tokReqMsgCtx, String tenantDomain,
+                                      SignedJWT signedJWT, JWTClaimsSet claimsSet)
             throws IdentityOAuth2Exception {
-
-        // Retrieve the signed JWT object from the request parameters
-        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
-        if (signedJWT == null) {
-            // If no valid subject token found, handle the exception
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
-                    "No Valid subject token was found for " + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
-        }
-
-        // Extract claims from the JWT
-        JWTClaimsSet claimsSet = getClaimSet(signedJWT);
-        if (claimsSet == null) {
-            // If claim values are empty, handle the exception
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given Subject Token");
-        }
 
         // Validate mandatory claims
         String subject = resolveSubject(claimsSet);
@@ -353,6 +469,94 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         tokReqMsgCtx.addProperty(IMPERSONATING_ACTOR, actorTokenSubject);
     }
 
+    /**
+     * Validates the actor token for delegation requests.
+     * Unlike impersonation, delegation does NOT require validating that the actor
+     * token subject
+     * matches an impersonator from the may_act claim, since delegation doesn't use
+     * may_act.
+     *
+     * @param tokReqMsgCtx    OauthTokenReqMessageContext
+     * @param requestParams   A Map<String, String> containing the request parameters.
+     * @param tenantDomain    The tenant domain associated with the request.
+     * @param existingActClaim The act claim already present on the subject token (the current
+     *                         delegation chain), or {@code null} if there is none.
+     * @throws IdentityOAuth2Exception If there's an error during token validation.
+     */
+    private void validateActorTokenForDelegation(OAuthTokenReqMessageContext tokReqMsgCtx,
+                                                 Map<String, String> requestParams,
+                                                 String tenantDomain,
+                                                 Map<String, Object> existingActClaim)
+            throws IdentityOAuth2Exception {
+
+        String actorTokenType = requestParams.get(TokenExchangeConstants.ACTOR_TOKEN_TYPE);
+        if (!(TokenExchangeConstants.JWT_TOKEN_TYPE.equals(actorTokenType) || (TokenExchangeConstants
+                .ACCESS_TOKEN_TYPE.equals(actorTokenType)) && isJWT(requestParams
+                .get(TokenExchangeConstants.ACTOR_TOKEN)))) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Unsupported actor token type : " + actorTokenType + " provided");
+        }
+
+        // Retrieve the signed JWT object from the request parameters
+        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.ACTOR_TOKEN));
+        if (signedJWT == null) {
+            // If no valid actor token found, handle the exception
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid actor token was found for "
+                    + TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        }
+
+        // Extract claims from the JWT
+        JWTClaimsSet claimsSet = getClaimSet(signedJWT);
+        if (claimsSet == null) {
+            // If claim values are empty, handle the exception
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given Actor Token");
+        }
+
+        // Validate mandatory claims
+        String actorTokenSubject = resolveSubject(claimsSet);
+        validateMandatoryClaims(claimsSet, actorTokenSubject);
+
+        String jwtIssuer = claimsSet.getIssuer();
+        IdentityProvider identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
+
+        try {
+            if (validateSignature(signedJWT, identityProvider, tenantDomain)) {
+                log.debug("Signature/MAC validated successfully for actor token.");
+            } else {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication "
+                        + "invalid for actor token.");
+            }
+        } catch (JOSEException e) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature for actor token ", e);
+        }
+
+        // Check the validity of the JWT
+        checkJWTValidity(claimsSet);
+
+        // Validate the issuer of the actor token
+        validateTokenIssuer(jwtIssuer, tenantDomain);
+
+        // Verify the actor subject resolves to a registered, active user.
+        validateActorSubject(tokReqMsgCtx, actorTokenSubject, claimsSet);
+
+        // Determine the current top of the delegation chain (the most recent actor).
+        String existingActorSubject = null;
+        if (existingActClaim != null && existingActClaim.get(SUB) != null) {
+            existingActorSubject = existingActClaim.get(SUB).toString();
+        }
+
+        // Only add a new delegation level when the actor differs from the current top of the chain.
+        if (!StringUtils.equals(actorTokenSubject, existingActorSubject)) {
+            tokReqMsgCtx.addProperty(ACTOR_SUBJECT, actorTokenSubject);
+            if (log.isDebugEnabled()) {
+                log.debug("Adding a new delegation level for the actor token subject.");
+            }
+        } else if (log.isDebugEnabled()) {
+            log.debug("Actor token subject matches the current top of the delegation chain; "
+                    + "carrying the existing act claim forward unchanged.");
+        }
+    }
+
     private void validateTokenIssuer(String jwtIssuer, String tenantDomain) throws IdentityOAuth2Exception {
 
         String expectedIssuer = OAuth2Util.getIdTokenIssuer(tenantDomain);
@@ -360,6 +564,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             handleException(TokenExchangeConstants.INVALID_TARGET, "Invalid issuer values provided");
         }
     }
+
     private boolean validateSubjectTokenAudience(List<String> audiences,
                                                  OAuthTokenReqMessageContext tokenReqMessageContext) {
 
@@ -383,7 +588,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
                                             Map<String, String> requestParams,
                                             String tenantDomain) throws IdentityOAuth2Exception {
 
-        SignedJWT signedJWT = getSignedJWT(requestParams.get(TokenExchangeConstants.SUBJECT_TOKEN));
+        SignedJWT signedJWT = getSignedJWT(requestParams.get(SUBJECT_TOKEN));
 
         JWTClaimsSet claimsSet = getClaimSet(signedJWT);
         String jwtIssuer = claimsSet.getIssuer();
@@ -465,6 +670,76 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             } finally {
                 IdentityUtil.threadLocalProperties.get().remove(IdentityCoreConstants.SKIP_LOCAL_USER_CLAIM_UPDATE);
             }
+        }
+    }
+
+    /**
+     * Validate that the actor token subject resolves to a registered, active user.
+     *
+     * @param tokReqMsgCtx  OAuth token request message context.
+     * @param actorSubject  Subject (sub) of the actor token.
+     * @param actorClaimsSet  Claim set of the actor token.
+     * @throws IdentityOAuth2Exception  Identity OAuth2 Exception.
+     */
+    private void validateActorSubject(OAuthTokenReqMessageContext tokReqMsgCtx, String actorSubject,
+                                      JWTClaimsSet actorClaimsSet) throws IdentityOAuth2Exception {
+
+        if (StringUtils.isBlank(actorSubject)) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Mandatory field - Subject is empty in the given Actor Token");
+        }
+
+        // Resolve the client id from the actor token
+        String clientId = actorClaimsSet.getClaim(AZP) != null ? actorClaimsSet.getClaim(AZP).toString() : null;
+        if (StringUtils.isBlank(clientId)) {
+            clientId = actorClaimsSet.getClaim(SUBJECT_TOKEN_CLIENT_ID) != null ?
+                    actorClaimsSet.getClaim(SUBJECT_TOKEN_CLIENT_ID).toString() : null;
+        }
+        if (StringUtils.isBlank(clientId)) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Unable to resolve the client id from the given Actor Token");
+        }
+
+        String tenantDomain = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
+        String userName;
+        String userStoreDomain;
+        try {
+            // Resolve the actor from the store using the application's subject claim.
+            AuthenticatedUser actor =
+                    OAuth2Util.getAuthenticatedUserFromSubjectIdentifier(actorSubject, tenantDomain, clientId);
+            userName = actor.getUserName();
+            userStoreDomain = actor.getUserStoreDomain();
+        } catch (IdentityOAuth2Exception e) {
+            /*
+             The subject could not be resolved by the application's subject claim.
+             Fall back to resolving it as a user id.
+             */
+            if (log.isDebugEnabled()) {
+                log.debug("Could not resolve the actor by the application's subject claim; retrying by treating "
+                        + "the subject as a user id.", e);
+            }
+            AbstractUserStoreManager userStoreManager = TokenExchangeUtils.getUserStoreManager(tokReqMsgCtx);
+            String domainQualifiedUserName;
+            try {
+                domainQualifiedUserName = userStoreManager.getUserNameFromUserID(actorSubject);
+            } catch (UserStoreException ex) {
+                handleException(OAuth2ErrorCodes.SERVER_ERROR, ex);
+                return;
+            }
+            if (StringUtils.isBlank(domainQualifiedUserName)) {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST,
+                        "Actor token could not be resolved to a registered user.");
+                return;
+            }
+            userStoreDomain = UserCoreUtil.extractDomainFromName(domainQualifiedUserName);
+            userName = UserCoreUtil.removeDomainFromName(domainQualifiedUserName);
+        }
+
+        // Validate that the actor account is active, neither locked nor disabled.
+        if (TokenExchangeUtils.isUserAccountLocked(userName, tenantDomain, userStoreDomain)
+                || TokenExchangeUtils.isUserAccountDisabled(userName, tenantDomain, userStoreDomain)) {
+            handleException(OAuth2ErrorCodes.ACCESS_DENIED,
+                    "Actor account is inactive.");
         }
     }
 
@@ -641,7 +916,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     }
 
     /**
-     * Default implementation to get IDP from the issuer name in a specific tenant
+     * Default implementation to get IDP from the issuer name in a specific tenant.
      *
      * @param tokReqMsgCtx OAuthTokenReqMessageContext to extract more information
      * @param jwtIssuer    issuer of the IDP
@@ -678,120 +953,107 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
         return tenantDomain;
     }
 
-    private void handleJWTSubjectToken(Map<String, String> requestParams, OAuthTokenReqMessageContext tokReqMsgCtx,
-                                       String tenantDomain, String requestedAudience) throws IdentityOAuth2Exception {
+    private void handleJWTSubjectToken(OAuthTokenReqMessageContext tokReqMsgCtx, String tenantDomain,
+                                       String requestedAudience, SignedJWT signedJWT, JWTClaimsSet claimsSet)
+            throws IdentityOAuth2Exception {
 
-        SignedJWT signedJWT;
         IdentityProvider identityProvider;
-        JWTClaimsSet claimsSet;
 
-        signedJWT = getSignedJWT(requestParams.get(Constants.TokenExchangeConstants.SUBJECT_TOKEN));
-        if (signedJWT != null) {
-            claimsSet = getClaimSet(signedJWT);
-            if (claimsSet == null) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Claim values are empty in the given JSON Web Token");
-            }
+        String jwtIssuer = claimsSet.getIssuer();
+        String subject = resolveSubject(claimsSet);
+        List<String> audiences = claimsSet.getAudience();
+        Map<String, Object> customClaims = new HashMap<>(claimsSet.getClaims());
 
-            String jwtIssuer = claimsSet.getIssuer();
-            String subject = resolveSubject(claimsSet);
-            List<String> audiences = claimsSet.getAudience();
-            Map<String, Object> customClaims = new HashMap<>(claimsSet.getClaims());
+        validateMandatoryClaims(claimsSet, subject);
+        tokReqMsgCtx.addProperty(Constants.EXPIRY_TIME, claimsSet.getExpirationTime());
 
-            tokReqMsgCtx.addProperty(Constants.EXPIRY_TIME, claimsSet.getExpirationTime());
+        identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
 
-            validateMandatoryClaims(claimsSet, subject);
-            identityProvider = getIdentityProvider(tokReqMsgCtx, jwtIssuer, tenantDomain);
+        boolean isLocalIdentityProvider = Constants.LOCAL_IDP_NAME.equals(identityProvider.
+                getIdentityProviderName());
 
-            boolean isLocalIdentityProvider = Constants.LOCAL_IDP_NAME.equals(identityProvider.
-                    getIdentityProviderName());
+        boolean isOrganization;
+        try {
+            isOrganization = OrganizationManagementUtil.isOrganization(tenantDomain);
+        } catch (OrganizationManagementException e) {
+            throw new IdentityOAuth2Exception("Error while checking whether the given tenant : " + tenantDomain +
+                    " is an organization", e);
+        }
 
-            boolean isOrganization;
-            try {
-                isOrganization = OrganizationManagementUtil.isOrganization(tenantDomain);
-            } catch (OrganizationManagementException e) {
-                throw new IdentityOAuth2Exception("Error while checking whether the given tenant : " + tenantDomain +
-                        " is an organization", e);
-            }
-
-            String issuerTenantDomain = tenantDomain;
-            /*
-             Handles the app to app token exchange in sub organization applications by getting the
-             issuer's tenant domain.
-            */
-            if (isOrganization && isLocalIdentityProvider) {
-                String clientId = claimsSet.getClaim(SUBJECT_TOKEN_CLIENT_ID) != null ?
-                        claimsSet.getClaim(SUBJECT_TOKEN_CLIENT_ID).toString() : null;
-                if (StringUtils.isNotEmpty(clientId)) {
-                    issuerTenantDomain = TokenExchangeUtils.resolveIssuerTenantDomain(jwtIssuer, clientId,
-                            tenantDomain);
-                    if (log.isDebugEnabled()) {
-                        log.debug("Resolved issuer tenant domain: " + issuerTenantDomain +
-                                " for client: " + clientId);
-                    }
-                } else {
-                    throw new IdentityOAuth2Exception("client_id claim is not found in the token to resolve " +
-                            "issuer tenant domain");
-                }
-            }
-
-            try {
-                if (validateSignature(signedJWT, identityProvider, issuerTenantDomain)) {
-                    log.debug("Signature/MAC validated successfully.");
-                } else {
-                    handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication "
-                            + "invalid");
-                }
-            } catch (JOSEException e) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature", e);
-            }
-            checkJWTValidity(claimsSet);
-
-            RequestParameter[] params = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getRequestParameters();
-            // Skip the issuer-in-audience check for locally issued tokens; the local issuer is already trusted.
-            if (!isLocalIdentityProvider) {
-                boolean audienceFound = validateAudience(audiences, identityProvider, requestedAudience, params,
+        String issuerTenantDomain = tenantDomain;
+        /*
+         Handles the app to app token exchange in sub organization applications by getting the
+         issuer's tenant domain.
+        */
+        if (isOrganization && isLocalIdentityProvider) {
+            String clientId = claimsSet.getClaim(SUBJECT_TOKEN_CLIENT_ID) != null ?
+                    claimsSet.getClaim(SUBJECT_TOKEN_CLIENT_ID).toString() : null;
+            if (StringUtils.isNotEmpty(clientId)) {
+                issuerTenantDomain = TokenExchangeUtils.resolveIssuerTenantDomain(jwtIssuer, clientId,
                         tenantDomain);
-                if (!audienceFound) {
-                    TokenExchangeUtils.handleClientException(Constants.TokenExchangeConstants.INVALID_TARGET,
-                            "Invalid audience values provided");
+                if (log.isDebugEnabled()) {
+                    log.debug("Resolved issuer tenant domain: " + issuerTenantDomain +
+                            " for client: " + clientId);
                 }
+            } else {
+                throw new IdentityOAuth2Exception("client_id claim is not found in the token to resolve " +
+                        "issuer tenant domain");
             }
+        }
 
-            try {
-                if (isOrganization && isLocalIdentityProvider) {
-                    /*
-                     At this point, signature validation was performed using the issuer organization's resident
-                     IDP to verify the subject token's authenticity. Now that the token is validated,
-                     the identity provider is switched to the sub organization's own resident IDP so
-                     that subsequent processing — custom claim validation, user resolution, and claim mapping —
-                     is governed by the sub organization's configuration rather than the issuer organization.
-                    */
-                    identityProvider = IdentityProviderManager.getInstance().getResidentIdP(tenantDomain);
-                }
-            } catch (IdentityProviderManagementException e) {
-                throw new IdentityOAuth2Exception(String.format(Constants.ERROR_GET_RESIDENT_IDP, tenantDomain), e);
+        try {
+            if (validateSignature(signedJWT, identityProvider, issuerTenantDomain)) {
+                log.debug("Signature/MAC validated successfully.");
+            } else {
+                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Signature or Message Authentication "
+                        + "invalid");
             }
+        } catch (JOSEException e) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Error when verifying signature", e);
+        }
+        checkJWTValidity(claimsSet);
 
-            boolean customClaimsValidated = validateCustomClaims(claimsSet.getClaims(), identityProvider, params);
-            if (!customClaimsValidated) {
-                handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Custom Claims in the JWT were invalid");
+        RequestParameter[] params = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getRequestParameters();
+        // Skip the issuer-in-audience check for locally issued tokens; the local issuer is already trusted.
+        if (!isLocalIdentityProvider) {
+            boolean audienceFound = validateAudience(audiences, identityProvider, requestedAudience, params,
+                    tenantDomain);
+            if (!audienceFound) {
+                TokenExchangeUtils.handleClientException(Constants.TokenExchangeConstants.INVALID_TARGET,
+                        "Invalid audience values provided");
             }
+        }
 
-            TokenExchangeUtils.setAuthorizedUser(tokReqMsgCtx, identityProvider, subject, claimsSet);
-            if (log.isDebugEnabled()) {
-                log.debug("Subject(sub) found in JWT: " + subject + " and set as the Authorized User.");
+        try {
+            if (isOrganization && isLocalIdentityProvider) {
+                /*
+                 At this point, signature validation was performed using the issuer organization's resident
+                 IDP to verify the subject token's authenticity. Now that the token is validated,
+                 the identity provider is switched to the sub organization's own resident IDP so
+                 that subsequent processing — custom claim validation, user resolution, and claim mapping —
+                 is governed by the sub organization's configuration rather than the issuer organization.
+                */
+                identityProvider = IdentityProviderManager.getInstance().getResidentIdP(tenantDomain);
             }
+        } catch (IdentityProviderManagementException e) {
+            throw new IdentityOAuth2Exception(String.format(Constants.ERROR_GET_RESIDENT_IDP, tenantDomain), e);
+        }
 
-            tokReqMsgCtx.setScope(tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope());
-            enrichCustomClaims(customClaims, identityProvider, params);
-            log.debug("Subject JWT Token was validated successfully");
-            if (OAuth2Util.isOIDCAuthzRequest(tokReqMsgCtx.getScope())) {
-                handleCustomClaims(tokReqMsgCtx, customClaims, identityProvider, tenantDomain);
-            }
+        boolean customClaimsValidated = validateCustomClaims(claimsSet.getClaims(), identityProvider, params);
+        if (!customClaimsValidated) {
+            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "Custom Claims in the JWT were invalid");
+        }
 
-        } else {
-            handleException(OAuth2ErrorCodes.INVALID_REQUEST, "No Valid subject token was found for "
-                    + Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        TokenExchangeUtils.setAuthorizedUser(tokReqMsgCtx, identityProvider, subject, claimsSet);
+        if (log.isDebugEnabled()) {
+            log.debug("Subject(sub) found in JWT: " + subject + " and set as the Authorized User.");
+        }
+
+        tokReqMsgCtx.setScope(tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope());
+        enrichCustomClaims(customClaims, identityProvider, params);
+        log.debug("Subject JWT Token was validated successfully");
+        if (OAuth2Util.isOIDCAuthzRequest(tokReqMsgCtx.getScope())) {
+            handleCustomClaims(tokReqMsgCtx, customClaims, identityProvider, tenantDomain);
         }
     }
 

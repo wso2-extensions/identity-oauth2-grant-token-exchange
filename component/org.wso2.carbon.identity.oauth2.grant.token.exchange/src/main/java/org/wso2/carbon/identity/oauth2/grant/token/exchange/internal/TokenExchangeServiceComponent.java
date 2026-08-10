@@ -27,6 +27,8 @@ import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.component.annotations.ReferencePolicy;
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
+import org.wso2.carbon.identity.handler.event.account.lock.service.AccountDisableService;
+import org.wso2.carbon.identity.handler.event.account.lock.service.AccountLockService;
 import org.wso2.carbon.identity.oauth2.config.services.OAuth2OIDCConfigOrgUsageScopeMgtService;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.FederatedAssociationManager;
 import org.wso2.carbon.user.core.listener.UserOperationEventListener;
@@ -199,5 +201,39 @@ public class TokenExchangeServiceComponent {
                                                                         oAuth2OIDCConfigOrgUsageScopeMgtService) {
 
         TokenExchangeComponentServiceHolder.getInstance().setOAuth2OIDCConfigOrgUsageScopeMgtService(null);
+    }
+
+    @Reference(
+            name = "org.wso2.carbon.identity.handler.event.account.lock.service.AccountLockService",
+            service = AccountLockService.class,
+            cardinality = ReferenceCardinality.MANDATORY,
+            policy = ReferencePolicy.DYNAMIC,
+            unbind = "unsetAccountLockService"
+    )
+    protected void setAccountLockService(AccountLockService accountLockService) {
+
+        TokenExchangeComponentServiceHolder.getInstance().setAccountLockService(accountLockService);
+    }
+
+    protected void unsetAccountLockService(AccountLockService accountLockService) {
+
+        TokenExchangeComponentServiceHolder.getInstance().setAccountLockService(null);
+    }
+
+    @Reference(
+            name = "org.wso2.carbon.identity.handler.event.account.lock.service.AccountDisableService",
+            service = AccountDisableService.class,
+            cardinality = ReferenceCardinality.MANDATORY,
+            policy = ReferencePolicy.DYNAMIC,
+            unbind = "unsetAccountDisableService"
+    )
+    protected void setAccountDisableService(AccountDisableService accountDisableService) {
+
+        TokenExchangeComponentServiceHolder.getInstance().setAccountDisableService(accountDisableService);
+    }
+
+    protected void unsetAccountDisableService(AccountDisableService accountDisableService) {
+
+        TokenExchangeComponentServiceHolder.getInstance().setAccountDisableService(null);
     }
 }

@@ -33,6 +33,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.json.JSONObject;
 import org.wso2.carbon.CarbonConstants;
+import org.wso2.carbon.identity.application.authentication.framework.exception.FrameworkException;
 import org.wso2.carbon.identity.application.authentication.framework.exception.UserIdNotFoundException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants;
@@ -61,6 +62,8 @@ import org.wso2.carbon.identity.core.util.IdentityConfigParser;
 import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
+import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountDisableServiceException;
+import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLockServiceException;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth.common.exception.InvalidOAuthClientException;
 import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
@@ -114,6 +117,7 @@ import java.util.Optional;
 
 import javax.xml.namespace.QName;
 
+import static org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants.ResidentIdpPropertyName.ACCOUNT_DISABLE_HANDLER_ENABLE_PROPERTY;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.DEFAULT_IDP_NAME;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.Constants.REGISTERED_CLAIMS;
 import static org.wso2.carbon.utils.CarbonUtils.isLegacyAuditLogsDisabled;
@@ -694,7 +698,7 @@ public class TokenExchangeUtils {
     }
 
     /**
-     * Method to create an association between the provider local user and the identity provider
+     * Method to create an association between the provider local user and the identity provider.
      * @param user    Local user
      * @param idp   Identity provider
      * @param subject  Subject identifier
@@ -1407,5 +1411,61 @@ public class TokenExchangeUtils {
         }
         // At this point 'verifier' will never be null;
         return signedJWT.verify(verifier);
+    }
+
+    /**
+     * Check whether the given user account is locked.
+     *
+     * @param userName  Username of the user.
+     * @param tenantDomain  Tenant domain of the user.
+     * @param userStoreDomain  User store domain of the user.
+     * @return  true if the account is locked or the given parameters are incomplete.
+     * @throws IdentityOAuth2Exception  Identity OAuth2 Exception.
+     */
+    public static boolean isUserAccountLocked(String userName, String tenantDomain, String userStoreDomain)
+            throws IdentityOAuth2Exception {
+
+        if (userName != null && tenantDomain != null && userStoreDomain != null) {
+            try {
+                return TokenExchangeComponentServiceHolder.getInstance().getAccountLockService()
+                        .isAccountLocked(userName, tenantDomain, userStoreDomain);
+            } catch (AccountLockServiceException e) {
+                throw new IdentityOAuth2Exception("Error while checking the account lock status of the user.", e);
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Check whether the given user account is disabled.
+     *
+     * @param userName  Username of the user.
+     * @param tenantDomain  Tenant domain of the user.
+     * @param userStoreDomain  User store domain of the user.
+     * @return  true if the account is disabled or the given parameters are incomplete.
+     * @throws IdentityOAuth2Exception  Identity OAuth2 Exception.
+     */
+    public static boolean isUserAccountDisabled(String userName, String tenantDomain, String userStoreDomain)
+            throws IdentityOAuth2Exception {
+
+        if (userName != null && tenantDomain != null && userStoreDomain != null) {
+            try {
+                if (!isAccountDisablingEnabled(tenantDomain)) {
+                    return false;
+                }
+                return TokenExchangeComponentServiceHolder.getInstance().getAccountDisableService()
+                        .isAccountDisabled(userName, tenantDomain, userStoreDomain);
+            } catch (IllegalArgumentException | AccountDisableServiceException | FrameworkException e) {
+                throw new IdentityOAuth2Exception("Error while checking the account disable status of the user.", e);
+            }
+        }
+        return true;
+    }
+
+    private static boolean isAccountDisablingEnabled(String tenantDomain) throws FrameworkException {
+
+        Property accountDisableConfigProperty = FrameworkUtils.getResidentIdpConfiguration(
+                ACCOUNT_DISABLE_HANDLER_ENABLE_PROPERTY, tenantDomain);
+        return accountDisableConfigProperty != null && Boolean.parseBoolean(accountDisableConfigProperty.getValue());
     }
 }
