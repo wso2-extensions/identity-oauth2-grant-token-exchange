@@ -1331,6 +1331,16 @@ public class TokenExchangeUtils {
     }
 
     /**
+     * Check whether limit scopes to subject token is enabled.
+     *
+     * @return true if scope limiting is enabled, false otherwise.
+     */
+    public static boolean isLimitScopesToSubjectTokenEnabled() {
+
+        return Boolean.parseBoolean(IdentityUtil.getProperty(Constants.LIMIT_SCOPES_TO_SUBJECT_TOKEN));
+    }
+
+    /**
      * Method to get the assert local user behaviour based on the service provider claim configuration.
      * @param claimConfig  Claim configuration of the service provider.
      * @return Assert local user behaviour.

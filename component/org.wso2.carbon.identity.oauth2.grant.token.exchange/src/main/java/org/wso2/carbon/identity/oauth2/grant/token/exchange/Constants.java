@@ -46,6 +46,8 @@ public class Constants {
     public static final String INCLUDE_PRIMARY_WHEN_SECONDARY_PRESENT_IN_TOKEN_EXCHANGE_IMPLICIT_ASSOCIATION =
             "TokenExchange.ImplicitAssociation.IncludePrimaryWhenSecondaryPresent";
 
+    public static final String LIMIT_SCOPES_TO_SUBJECT_TOKEN = "TokenExchange.LimitScopesToSubjectToken";
+
     /**
      * Constants for Token Exchange grant type.
      */
