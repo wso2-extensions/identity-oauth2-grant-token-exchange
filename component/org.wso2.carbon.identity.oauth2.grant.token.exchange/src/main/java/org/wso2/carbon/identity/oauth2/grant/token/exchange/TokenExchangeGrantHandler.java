@@ -38,6 +38,7 @@ import org.wso2.carbon.identity.event.IdentityEventException;
 import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLockException;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
+import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.config.exceptions.OAuth2OIDCConfigOrgUsageScopeMgtServerException;
 import org.wso2.carbon.identity.oauth2.config.utils.OAuth2OIDCConfigOrgUsageScopeUtils;
@@ -63,6 +64,7 @@ import org.wso2.carbon.utils.DiagnosticLog;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -89,6 +91,7 @@ import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenEx
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getIDP;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getIDPAlias;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.getSignedJWT;
+import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleClientException;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleCustomClaims;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.handleException;
 import static org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils.parseTokenExchangeConfiguration;
@@ -767,6 +770,68 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             handleException(OAuth2ErrorCodes.ACCESS_DENIED,
                     "Actor account is inactive.");
         }
+    }
+
+    /**
+     * Constrains the token audience to the requested {@code audience} parameter. Ignored for impersonation
+     * requests. Throws if more than one audience is requested, or the requested audience is not a registered
+     * audience of the application.
+     *
+     * @param tokReqMsgCtx Token request message context.
+     * @param consumerKey  Consumer key of the application.
+     * @param oAuthAppBean Application information.
+     * @return the resolved audience list.
+     * @throws IdentityOAuth2Exception if the requested audience is invalid, or an error occurred while
+     *                                 resolving the audiences.
+     */
+    @Override
+    protected List<String> resolveAudiences(OAuthTokenReqMessageContext tokReqMsgCtx, String consumerKey,
+                                            OAuthAppDO oAuthAppBean) throws IdentityOAuth2Exception {
+
+        List<String> allowedAudiences = OAuth2Util.getOIDCAudience(consumerKey, oAuthAppBean);
+
+        if (tokReqMsgCtx.isImpersonationRequest()) {
+            return allowedAudiences;
+        }
+        String requestedAudience = getRequestedAudience(tokReqMsgCtx);
+        if (requestedAudience == null) {
+            return allowedAudiences;
+        }
+
+        String[] audienceValues = requestedAudience.trim().split("\\s+");
+        if (audienceValues.length > 1) {
+            handleClientException(TokenExchangeConstants.INVALID_TARGET,
+                    "Multiple audience values provided in the request");
+        }
+        if (!allowedAudiences.contains(audienceValues[0])) {
+            handleClientException(TokenExchangeConstants.INVALID_TARGET,
+                    "Invalid audience value provided : " + audienceValues[0]);
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("Limiting token audience to the requested audience: " + audienceValues[0]);
+        }
+        return Collections.singletonList(audienceValues[0]);
+    }
+
+    /**
+     * Reads the {@code audience} parameter from the token exchange request, if present.
+     *
+     * @param tokReqMsgCtx Token request message context.
+     * @return the raw requested audience value, or {@code null} if not present.
+     */
+    private String getRequestedAudience(OAuthTokenReqMessageContext tokReqMsgCtx) {
+
+        RequestParameter[] params = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getRequestParameters();
+        if (params == null) {
+            return null;
+        }
+        for (RequestParameter param : params) {
+            if (TokenExchangeConstants.AUDIENCE.equals(param.getKey())) {
+                String[] values = param.getValue();
+                return (values != null && values.length > 0) ? values[0] : null;
+            }
+        }
+        return null;
     }
 
     /**

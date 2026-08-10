@@ -36,6 +36,7 @@ import org.wso2.carbon.identity.application.authentication.framework.model.Authe
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.application.common.model.IdentityProviderProperty;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
+import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ClientException;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenReqDTO;
@@ -52,11 +53,14 @@ import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.text.ParseException;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -153,6 +157,76 @@ public class TokenExchangeGrantHandlerTest {
 
         boolean isValid = tokenExchangeGrantHandler.validateGrant(tokReqMsgCtx);
         Assert.assertTrue(isValid);
+    }
+
+    @DataProvider(name = "resolveAudiencesDataProvider")
+    public Object[][] resolveAudiencesDataProvider() {
+
+        List<String> allowed = Arrays.asList("https://api.example.com", CLIENT_ID);
+        // requestedAudience, allowedAudiences, isImpersonation, expectedAudiences
+        return new Object[][]{
+                {"https://api.example.com", allowed, false, Collections.singletonList("https://api.example.com")},
+                {null, allowed, false, allowed},
+                {"https://not-allowed.example.com", allowed, true, allowed},
+        };
+    }
+
+    @Test(dataProvider = "resolveAudiencesDataProvider")
+    public void testResolveAudiences(String requestedAudience, List<String> allowedAudiences,
+                                     boolean isImpersonation, List<String> expectedAudiences) throws Exception {
+
+        oAuth2Util.when(() -> OAuth2Util.getOIDCAudience(anyString(), any())).thenReturn(allowedAudiences);
+
+        OAuth2AccessTokenReqDTO reqDTO = new OAuth2AccessTokenReqDTO();
+        reqDTO.setClientId(CLIENT_ID);
+        reqDTO.setGrantType(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        if (requestedAudience != null) {
+            reqDTO.setRequestParameters(new RequestParameter[]{
+                    new RequestParameter(Constants.TokenExchangeConstants.AUDIENCE, requestedAudience)});
+        } else {
+            reqDTO.setRequestParameters(new RequestParameter[0]);
+        }
+        OAuthTokenReqMessageContext ctx = new OAuthTokenReqMessageContext(reqDTO);
+        ctx.setImpersonationRequest(isImpersonation);
+
+        List<String> resolvedAudiences =
+                tokenExchangeGrantHandler.resolveAudiences(ctx, CLIENT_ID, mock(OAuthAppDO.class));
+        Assert.assertEquals(resolvedAudiences, expectedAudiences);
+    }
+
+    @DataProvider(name = "invalidRequestedAudienceDataProvider")
+    public Object[][] invalidRequestedAudienceDataProvider() {
+
+        return new Object[][]{
+                {"https://api.example.com https://api2.example.com"},
+                {"https://not-allowed.example.com"},
+                {""},
+                {"   "},
+        };
+    }
+
+    @Test(dataProvider = "invalidRequestedAudienceDataProvider",
+            expectedExceptions = IdentityOAuth2ClientException.class)
+    public void testResolveAudiencesThrowsForInvalidRequestedAudience(String requestedAudience) throws Exception {
+
+        oAuth2Util.when(() -> OAuth2Util.getOIDCAudience(anyString(), any()))
+                .thenReturn(Arrays.asList("https://api.example.com", CLIENT_ID));
+
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.handleClientException(anyString(), anyString()))
+                .thenThrow(new IdentityOAuth2ClientException("invalid_target", "Invalid audience value provided"));
+        try {
+            OAuth2AccessTokenReqDTO reqDTO = new OAuth2AccessTokenReqDTO();
+            reqDTO.setClientId(CLIENT_ID);
+            reqDTO.setGrantType(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+            reqDTO.setRequestParameters(new RequestParameter[]{
+                    new RequestParameter(Constants.TokenExchangeConstants.AUDIENCE, requestedAudience)});
+            OAuthTokenReqMessageContext ctx = new OAuthTokenReqMessageContext(reqDTO);
+
+            tokenExchangeGrantHandler.resolveAudiences(ctx, CLIENT_ID, mock(OAuthAppDO.class));
+        } finally {
+            tokenExchangeUtils.when(() -> TokenExchangeUtils.handleClientException(anyString(), anyString()))
+                    .thenAnswer(invocation -> null);
+        }
     }
 
     @Test
