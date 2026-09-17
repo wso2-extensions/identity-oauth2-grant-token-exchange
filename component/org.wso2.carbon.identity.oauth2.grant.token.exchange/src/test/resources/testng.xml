@@ -24,4 +24,9 @@
             <class name="org.wso2.carbon.identity.oauth2.grant.token.exchange.TokenExchangeGrantHandlerTest"/>
         </classes>
     </test>
+    <test name="token.exchange.utils.tests" preserve-order="false" parallel="false">
+        <classes>
+            <class name="org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtilsTest"/>
+        </classes>
+    </test>
 </suite>

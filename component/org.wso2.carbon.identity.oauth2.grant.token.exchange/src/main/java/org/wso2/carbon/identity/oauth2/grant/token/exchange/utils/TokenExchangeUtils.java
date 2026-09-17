@@ -1035,8 +1035,10 @@ public class TokenExchangeUtils {
     private static void checkCertificateValidity(X509Certificate x509Certificate) throws IdentityOAuth2Exception {
 
         String isEnforceCertificateValidity = IdentityUtil.getProperty(Constants.ENFORCE_CERTIFICATE_VALIDITY);
-        if (!Boolean.parseBoolean(isEnforceCertificateValidity)) {
+        if (StringUtils.isNotEmpty(isEnforceCertificateValidity)
+                && !Boolean.parseBoolean(isEnforceCertificateValidity)) {
             log.debug("Check for the certificate validity is disabled.");
+            return;
         }
         try {
             x509Certificate.checkValidity();
