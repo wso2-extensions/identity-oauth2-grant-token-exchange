@@ -1392,10 +1392,7 @@ public class TokenExchangeUtils {
             CompatibilitySetting setting = compatibilitySettingsService.getCompatibilitySettings(tenantDomain);
             CompatibilitySettingGroup group =
                     setting.getCompatibilitySetting(Constants.TOKEN_EXCHANGE_COMPATIBILITY_SETTING_GROUP);
-            if (group == null) {
-                return false;
-            }
-            return Boolean.parseBoolean(
+            return group != null && Boolean.parseBoolean(
                     group.getSettingValue(Constants.LIMIT_SCOPES_TO_SUBJECT_TOKEN_COMPATIBILITY_KEY));
         } catch (CompatibilitySettingException e) {
             if (log.isDebugEnabled()) {
