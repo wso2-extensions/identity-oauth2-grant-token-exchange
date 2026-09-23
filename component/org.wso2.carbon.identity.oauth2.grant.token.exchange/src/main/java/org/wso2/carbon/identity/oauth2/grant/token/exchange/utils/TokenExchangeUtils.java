@@ -58,6 +58,10 @@ import org.wso2.carbon.identity.central.log.mgt.utils.LoggerUtils;
 import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
 import org.wso2.carbon.identity.claim.metadata.mgt.exception.ClaimMetadataException;
 import org.wso2.carbon.identity.claim.metadata.mgt.model.ExternalClaim;
+import org.wso2.carbon.identity.compatibility.settings.core.exception.CompatibilitySettingException;
+import org.wso2.carbon.identity.compatibility.settings.core.model.CompatibilitySetting;
+import org.wso2.carbon.identity.compatibility.settings.core.model.CompatibilitySettingGroup;
+import org.wso2.carbon.identity.compatibility.settings.core.service.CompatibilitySettingsService;
 import org.wso2.carbon.identity.core.util.IdentityConfigParser;
 import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
@@ -1334,12 +1338,71 @@ public class TokenExchangeUtils {
 
     /**
      * Check whether limit scopes to subject token is enabled.
+     * This method is deprecated as it does not consider the tenant level compatibility setting.
+     * Use {@link #isLimitScopesToSubjectTokenEnabled(String)} instead.
      *
      * @return true if scope limiting is enabled, false otherwise.
      */
+    @Deprecated
     public static boolean isLimitScopesToSubjectTokenEnabled() {
 
         return Boolean.parseBoolean(IdentityUtil.getProperty(Constants.LIMIT_SCOPES_TO_SUBJECT_TOKEN));
+    }
+
+    /**
+     * Check whether limit scopes to subject token is enabled for the given tenant.
+     *
+     * @param tenantDomain Tenant domain of the token request.
+     * @return true if scope limiting is enabled, false otherwise.
+     */
+    public static boolean isLimitScopesToSubjectTokenEnabled(String tenantDomain) {
+
+        return Boolean.parseBoolean(IdentityUtil.getProperty(Constants.LIMIT_SCOPES_TO_SUBJECT_TOKEN))
+                && isLimitScopesToSubjectTokenEnabledForTenant(tenantDomain);
+    }
+
+    /**
+     * Check whether restricting scopes for federated tokens is enabled on the application.
+     *
+     * @param tokReqMsgCtx Token request message context.
+     * @return true if scope restriction is enabled for the application, false otherwise.
+     */
+    public static boolean isRestrictScopeIssuanceForFederatedTokensEnabled(OAuthTokenReqMessageContext tokReqMsgCtx) {
+
+        OAuthAppDO oAuthAppBean = (OAuthAppDO) tokReqMsgCtx.getProperty(Constants.OAUTH_APP_DO_PROPERTY);
+        return oAuthAppBean != null
+                && Boolean.TRUE.equals(oAuthAppBean.isRestrictScopeIssuanceForFederatedTokens());
+    }
+
+    /**
+     * Check whether limit scopes to subject token is enabled for the given tenant by the compatibility setting.
+     *
+     * @param tenantDomain Tenant domain of the token request.
+     * @return true if scope limiting is enabled for the tenant, false otherwise.
+     */
+    private static boolean isLimitScopesToSubjectTokenEnabledForTenant(String tenantDomain) {
+
+        if (StringUtils.isBlank(tenantDomain)) {
+            return false;
+        }
+        CompatibilitySettingsService compatibilitySettingsService =
+                TokenExchangeComponentServiceHolder.getInstance().getCompatibilitySettingsService();
+        if (compatibilitySettingsService == null) {
+            return false;
+        }
+        try {
+            CompatibilitySetting setting = compatibilitySettingsService.getCompatibilitySettings(tenantDomain);
+            CompatibilitySettingGroup group =
+                    setting.getCompatibilitySetting(Constants.TOKEN_EXCHANGE_COMPATIBILITY_SETTING_GROUP);
+            return group != null && Boolean.parseBoolean(
+                    group.getSettingValue(Constants.LIMIT_SCOPES_TO_SUBJECT_TOKEN_COMPATIBILITY_KEY));
+        } catch (CompatibilitySettingException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("Could not evaluate compatibility setting for tenant: " + tenantDomain +
+                        ". Scope limiting will not be applied.", e);
+            }
+            return false;
+        }
     }
 
     /**

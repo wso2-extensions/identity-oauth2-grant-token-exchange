@@ -19,6 +19,7 @@ package org.wso2.carbon.identity.oauth2.grant.token.exchange.internal;
 
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
+import org.wso2.carbon.identity.compatibility.settings.core.service.CompatibilitySettingsService;
 import org.wso2.carbon.identity.handler.event.account.lock.service.AccountDisableService;
 import org.wso2.carbon.identity.handler.event.account.lock.service.AccountLockService;
 import org.wso2.carbon.identity.oauth2.config.services.OAuth2OIDCConfigOrgUsageScopeMgtService;
@@ -42,6 +43,7 @@ public class TokenExchangeComponentServiceHolder {
     private OAuth2OIDCConfigOrgUsageScopeMgtService oAuth2OIDCConfigOrgUsageScopeMgtService;
     private AccountLockService accountLockService;
     private AccountDisableService accountDisableService;
+    private CompatibilitySettingsService compatibilitySettingsService;
 
     public static TokenExchangeComponentServiceHolder getInstance() {
         return INSTANCE;
@@ -137,5 +139,15 @@ public class TokenExchangeComponentServiceHolder {
     public void setAccountDisableService(AccountDisableService accountDisableService) {
 
         this.accountDisableService = accountDisableService;
+    }
+
+    public CompatibilitySettingsService getCompatibilitySettingsService() {
+
+        return compatibilitySettingsService;
+    }
+
+    public void setCompatibilitySettingsService(CompatibilitySettingsService compatibilitySettingsService) {
+
+        this.compatibilitySettingsService = compatibilitySettingsService;
     }
 }

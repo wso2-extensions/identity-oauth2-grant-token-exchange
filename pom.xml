@@ -66,6 +66,11 @@
                 <version>${carbon.identity.framework.version}</version>
             </dependency>
             <dependency>
+                <groupId>org.wso2.carbon.identity.framework</groupId>
+                <artifactId>org.wso2.carbon.identity.compatibility.settings.core</artifactId>
+                <version>${carbon.identity.framework.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>org.wso2.orbit.commons-collections</groupId>
                 <artifactId>commons-collections</artifactId>
                 <version>${commons-collections.version}</version>
@@ -271,8 +276,8 @@
         <apache.felix.scr.ds.annotations.version>1.2.4</apache.felix.scr.ds.annotations.version>
         <carbon.p2.plugin.version>1.5.3</carbon.p2.plugin.version>
         <carbon.identity.oauth.package.import.version.range>[6.0.0, 8.0.0)</carbon.identity.oauth.package.import.version.range>
-        <carbon.identity.oauth.version>7.5.70</carbon.identity.oauth.version>
-        <carbon.identity.framework.version>7.8.675</carbon.identity.framework.version>
+        <carbon.identity.oauth.version>7.5.87</carbon.identity.oauth.version>
+        <carbon.identity.framework.version>7.11.200</carbon.identity.framework.version>
         <commons-lang.wso2.osgi.version.range>[2.6.0,3.0.0)</commons-lang.wso2.osgi.version.range>
         <commons-logging.osgi.version.range>[1.2,2.0)</commons-logging.osgi.version.range>
         <equinox.osgi.services.version>3.5.100.v20160504-1419</equinox.osgi.services.version>

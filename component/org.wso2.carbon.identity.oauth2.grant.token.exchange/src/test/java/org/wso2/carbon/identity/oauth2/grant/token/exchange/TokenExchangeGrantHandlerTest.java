@@ -247,6 +247,99 @@ public class TokenExchangeGrantHandlerTest {
         }
     }
 
+    @DataProvider(name = "localSubjectTokenScopeData")
+    public Object[][] localSubjectTokenScopeData() {
+
+        // limitScopesToSubjectToken, expectedScopes
+        return new Object[][]{
+                {true, new String[]{"default"}},
+                {false, new String[]{"default", "internal_login"}},
+        };
+    }
+
+    @Test(dataProvider = "localSubjectTokenScopeData")
+    public void testRequestedScopesForLocalSubjectToken(boolean limitScopesToSubjectToken, String[] expectedScopes)
+            throws Exception {
+
+        IdentityProvider localIdp = getLocalIdentityProvider();
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.getIDP(ISSUER, "carbon.super")).thenReturn(localIdp);
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.isLimitScopesToSubjectTokenEnabled("carbon.super"))
+                .thenReturn(limitScopesToSubjectToken);
+        try {
+            OAuthTokenReqMessageContext ctx = buildScopeTestContext(new String[]{"default", "internal_login"});
+            prepareTokenUtilsForScopeTest(localIdp);
+
+            Assert.assertTrue(tokenExchangeGrantHandler.validateGrant(ctx));
+            Assert.assertEquals(ctx.getScope(), expectedScopes);
+        } finally {
+            tokenExchangeUtils.when(() -> TokenExchangeUtils.getIDP(ISSUER, "carbon.super")).thenReturn(idp);
+            tokenExchangeUtils.when(() -> TokenExchangeUtils.isLimitScopesToSubjectTokenEnabled("carbon.super"))
+                    .thenReturn(false);
+        }
+    }
+
+    @DataProvider(name = "federatedSubjectTokenScopeData")
+    public Object[][] federatedSubjectTokenScopeData() {
+
+        // restrictScopeIssuanceForFederatedTokens, expectedScopes
+        return new Object[][]{
+                {true, new String[0]},
+                {false, new String[]{"default", "internal_login"}},
+        };
+    }
+
+    @Test(dataProvider = "federatedSubjectTokenScopeData")
+    public void testRequestedScopesForFederatedSubjectToken(boolean restrictScopeIssuanceForFederatedTokens,
+                                                            String[] expectedScopes) throws Exception {
+
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.isRestrictScopeIssuanceForFederatedTokensEnabled(any()))
+                .thenReturn(restrictScopeIssuanceForFederatedTokens);
+        try {
+            OAuthTokenReqMessageContext ctx = buildScopeTestContext(new String[]{"default", "internal_login"});
+            prepareTokenUtilsForScopeTest(idp);
+
+            Assert.assertTrue(tokenExchangeGrantHandler.validateGrant(ctx));
+            Assert.assertEquals(ctx.getScope(), expectedScopes);
+        } finally {
+            tokenExchangeUtils.when(() -> TokenExchangeUtils.isRestrictScopeIssuanceForFederatedTokensEnabled(any()))
+                    .thenReturn(false);
+        }
+    }
+
+    private IdentityProvider getLocalIdentityProvider() {
+
+        IdentityProvider identityProvider = getIdentityProvider();
+        identityProvider.setIdentityProviderName(Constants.LOCAL_IDP_NAME);
+        return identityProvider;
+    }
+
+    private OAuthTokenReqMessageContext buildScopeTestContext(String[] requestedScopes) {
+
+        OAuth2AccessTokenReqDTO reqDTO = new OAuth2AccessTokenReqDTO();
+        reqDTO.setClientId(CLIENT_ID);
+        reqDTO.setGrantType(Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE);
+        reqDTO.setTenantDomain("carbon.super");
+        reqDTO.setScope(requestedScopes);
+        reqDTO.setRequestParameters(new RequestParameter[]{
+                new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN_TYPE,
+                        Constants.TokenExchangeConstants.JWT_TOKEN_TYPE),
+                new RequestParameter(Constants.TokenExchangeConstants.SUBJECT_TOKEN, "subject_token"),
+                new RequestParameter("grant_type", Constants.TokenExchangeConstants.TOKEN_EXCHANGE_GRANT_TYPE),
+        });
+        return new OAuthTokenReqMessageContext(reqDTO);
+    }
+
+    private void prepareTokenUtilsForScopeTest(IdentityProvider identityProvider) throws ParseException {
+
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.validateSignature(signedJWT, identityProvider,
+                "carbon.super")).thenReturn(true);
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.checkExpirationTime(eq(signedJWT.getJWTClaimsSet()
+                .getExpirationTime()), eq(System.currentTimeMillis()), Mockito.anyLong())).thenReturn(true);
+        tokenExchangeUtils.when(() -> TokenExchangeUtils.validateIssuedAtTime(eq(signedJWT.getJWTClaimsSet()
+                .getIssueTime()), eq(System.currentTimeMillis()), Mockito.anyLong(), Mockito.anyInt()))
+                .thenReturn(true);
+    }
+
     private SignedJWT getJWTTypeSubjectToken() throws NoSuchAlgorithmException, JOSEException {
 
         KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");

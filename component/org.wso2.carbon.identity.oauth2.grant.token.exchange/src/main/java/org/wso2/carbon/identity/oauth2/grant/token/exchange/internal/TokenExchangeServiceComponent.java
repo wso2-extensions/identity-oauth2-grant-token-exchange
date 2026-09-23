@@ -27,6 +27,7 @@ import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.component.annotations.ReferencePolicy;
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataManagementService;
+import org.wso2.carbon.identity.compatibility.settings.core.service.CompatibilitySettingsService;
 import org.wso2.carbon.identity.handler.event.account.lock.service.AccountDisableService;
 import org.wso2.carbon.identity.handler.event.account.lock.service.AccountLockService;
 import org.wso2.carbon.identity.oauth2.config.services.OAuth2OIDCConfigOrgUsageScopeMgtService;
@@ -235,5 +236,23 @@ public class TokenExchangeServiceComponent {
     protected void unsetAccountDisableService(AccountDisableService accountDisableService) {
 
         TokenExchangeComponentServiceHolder.getInstance().setAccountDisableService(null);
+    }
+
+    @Reference(
+            name = "compatibility.settings.service.component",
+            service = CompatibilitySettingsService.class,
+            cardinality = ReferenceCardinality.MANDATORY,
+            policy = ReferencePolicy.DYNAMIC,
+            unbind = "unsetCompatibilitySettingsService"
+    )
+    protected void setCompatibilitySettingsService(CompatibilitySettingsService compatibilitySettingsService) {
+
+        TokenExchangeComponentServiceHolder.getInstance().setCompatibilitySettingsService(
+                compatibilitySettingsService);
+    }
+
+    protected void unsetCompatibilitySettingsService(CompatibilitySettingsService compatibilitySettingsService) {
+
+        TokenExchangeComponentServiceHolder.getInstance().setCompatibilitySettingsService(null);
     }
 }

@@ -405,24 +405,36 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     /**
      * Resolves the scopes for the issued token and sets them on the request context. For local IdP subject
      * tokens, limits the scopes to the intersection of the requested and subject token scopes on delegation requests
-     * or when the "LimitScopesToSubjectToken" configuration is enabled.
+     * or when the "LimitScopesToSubjectToken" configuration is enabled. For federated subject tokens, no scopes are
+     * issued when the "tokenExchangeRestrictScopeIssuanceForFederatedTokens" configuration is enabled on the
+     * application.
      *
      * @param tokReqMsgCtx            Token request message context.
      * @param claimsSet               Subject token claims.
      * @param isLocalIdentityProvider Whether the subject token was issued by the local (resident) IdP.
+     * @param tenantDomain            The tenant domain associated with the request.
      */
     private void handleRequestedScopes(OAuthTokenReqMessageContext tokReqMsgCtx, JWTClaimsSet claimsSet,
-                                       boolean isLocalIdentityProvider) {
+                                       boolean isLocalIdentityProvider, String tenantDomain) {
+
+        String[] requestedScopes = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope();
+
+        if (!isLocalIdentityProvider) {
+            if (TokenExchangeUtils.isRestrictScopeIssuanceForFederatedTokensEnabled(tokReqMsgCtx)) {
+                tokReqMsgCtx.setScope(new String[0]);
+            } else {
+                tokReqMsgCtx.setScope(requestedScopes);
+            }
+            return;
+        }
 
         RequestParameter[] params = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getRequestParameters();
         Map<String, String> requestParams = Arrays.stream(params).collect(Collectors.toMap(RequestParameter::getKey,
                 requestParam -> requestParam.getValue()[0]));
-
-        String[] requestedScopes = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope();
         boolean enableScopeLimiting = hasSubjectAndActorTokenParameters(requestParams)
-                || TokenExchangeUtils.isLimitScopesToSubjectTokenEnabled();
+                || TokenExchangeUtils.isLimitScopesToSubjectTokenEnabled(tenantDomain);
 
-        if (enableScopeLimiting && isLocalIdentityProvider && ArrayUtils.isNotEmpty(requestedScopes)) {
+        if (enableScopeLimiting && ArrayUtils.isNotEmpty(requestedScopes)) {
             tokReqMsgCtx.setScope(getScopes(claimsSet, tokReqMsgCtx));
         } else {
             tokReqMsgCtx.setScope(requestedScopes);
@@ -1140,7 +1152,7 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             log.debug("Subject(sub) found in JWT: " + subject + " and set as the Authorized User.");
         }
 
-        handleRequestedScopes(tokReqMsgCtx, claimsSet, isLocalIdentityProvider);
+        handleRequestedScopes(tokReqMsgCtx, claimsSet, isLocalIdentityProvider, tenantDomain);
         enrichCustomClaims(customClaims, identityProvider, params);
         log.debug("Subject JWT Token was validated successfully");
         if (OAuth2Util.isOIDCAuthzRequest(tokReqMsgCtx.getScope())) {
