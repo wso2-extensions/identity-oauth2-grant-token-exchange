@@ -47,7 +47,6 @@ public class Constants {
             "TokenExchange.ImplicitAssociation.IncludePrimaryWhenSecondaryPresent";
 
     public static final String LIMIT_SCOPES_TO_SUBJECT_TOKEN = "TokenExchange.LimitScopesToSubjectToken";
-
     public static final String USE_REQUESTING_APP_SUBJECT_ATTRIBUTE = "TokenExchange.UseRequestingAppSubjectAttribute";
 
     public static final String TOKEN_EXCHANGE_COMPATIBILITY_SETTING_GROUP = "tokenExchange";
