@@ -69,6 +69,7 @@ import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountDisableServiceException;
 import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLockServiceException;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
+import org.wso2.carbon.identity.oauth.common.OAuthConstants;
 import org.wso2.carbon.identity.oauth.common.exception.InvalidOAuthClientException;
 import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ClientException;
@@ -584,6 +585,11 @@ public class TokenExchangeUtils {
                     authenticatedUser.setFederatedIdPName(null);
                     authenticatedUser.setUserName(accessTokenDO.getAuthzUser().getUserName());
                     authenticatedUser.setUserStoreDomain(accessTokenDO.getAuthzUser().getUserStoreDomain());
+                    if (isUseRequestingAppSubjectAttributeEnabled() &&
+                            OAuthConstants.UserType.APPLICATION_USER.equals(accessTokenDO.getTokenType())) {
+                        // Subject will be resolved from the requesting application's subject claim configuration.
+                        authenticatedUser.setAuthenticatedSubjectIdentifier(null);
+                    }
                 } catch (UserIdNotFoundException e) {
                     handleException("Error while getting user id from the access token data object.", e);
                 }
@@ -1334,6 +1340,11 @@ public class TokenExchangeUtils {
 
         return Boolean.parseBoolean(IdentityUtil.getProperty(
                 Constants.INCLUDE_PRIMARY_WHEN_SECONDARY_PRESENT_IN_TOKEN_EXCHANGE_IMPLICIT_ASSOCIATION));
+    }
+
+    private static boolean isUseRequestingAppSubjectAttributeEnabled() {
+
+        return Boolean.parseBoolean(IdentityUtil.getProperty(Constants.USE_REQUESTING_APP_SUBJECT_ATTRIBUTE));
     }
 
     /**
