@@ -820,7 +820,9 @@ public class TokenExchangeUtils {
             issuer = IdentityApplicationManagementUtil.getProperty(oauthAuthenticatorConfig.getProperties(),
                     Constants.OIDC_IDP_ENTITY_ID).getValue();
         }
-        if (jwtIssuer.equals(issuer)) {
+        // When FAPI 2.0 is enabled for the tenant, the tenant's tokens carry the FAPI 2.0 issuer instead of the
+        // resident IdP entity ID.
+        if (jwtIssuer.equals(issuer) || jwtIssuer.equals(OAuth2Util.getIdTokenIssuer(tenantDomain))) {
             return residentIdentityProvider;
         }
 
