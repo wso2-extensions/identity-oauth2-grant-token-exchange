@@ -47,6 +47,8 @@ import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.identity.organization.management.service.util.OrganizationManagementUtil;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
@@ -91,6 +93,9 @@ public class TokenExchangeGrantHandlerTest {
     private static final String CLIENT_ID = "7N7vQHZbJtPnzegtGXJvvwDL4wca0";
     private static final String ACTOR_CLIENT_ID = "actor-app-client-id";
     private static final String ACTOR_SUBJECT_ID = "f3e12a77-9c4b-4d82-ae61-8b3c24f19e05";
+    private static final String FAPI2_TENANT_DOMAIN = "fapi2.com";
+    private static final String FAPI2_ISSUER = "https://localhost:9443/t/fapi2.com";
+    private static final String FAPI2_RESIDENT_IDP_ENTITY_ID = "https://localhost:9443/t/fapi2.com/oauth2/token";
 
 
 
@@ -847,6 +852,36 @@ public class TokenExchangeGrantHandlerTest {
         tokenExchangeUtils.when(() -> TokenExchangeUtils.setAuthorizedUserForImpersonation(
                         Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.any(), Mockito.anyString()))
                 .thenAnswer(invocation -> null);
+    }
+
+    @DataProvider(name = "fapi2IssuerData")
+    public Object[][] fapi2IssuerData() {
+
+        return new Object[][]{
+                // JWT issuer, whether the issuer is expected to be accepted.
+                {FAPI2_RESIDENT_IDP_ENTITY_ID, true},
+                {FAPI2_ISSUER, true},
+                {"https://localhost:9443/t/other.com", false},
+        };
+    }
+
+    @Test(dataProvider = "fapi2IssuerData",
+            description = "The entity ID and the FAPI 2.0 issuer of the tenant are accepted as the token issuer")
+    public void testValidateTokenIssuerWithFapi2Issuer(String jwtIssuer, boolean expected) throws Exception {
+
+        oAuth2Util.when(() -> OAuth2Util.getIdTokenIssuer(FAPI2_TENANT_DOMAIN)).thenReturn(FAPI2_ISSUER);
+        oAuth2Util.when(() -> OAuth2Util.getResidentIdpEntityId(FAPI2_TENANT_DOMAIN))
+                .thenReturn(FAPI2_RESIDENT_IDP_ENTITY_ID);
+        Method validateTokenIssuer = TokenExchangeGrantHandler.class.getDeclaredMethod("validateTokenIssuer",
+                String.class, String.class);
+        validateTokenIssuer.setAccessible(true);
+        try {
+            validateTokenIssuer.invoke(tokenExchangeGrantHandler, jwtIssuer, FAPI2_TENANT_DOMAIN);
+            Assert.assertTrue(expected, "The issuer should be rejected: " + jwtIssuer);
+        } catch (InvocationTargetException e) {
+            Assert.assertFalse(expected, "The issuer should be accepted: " + jwtIssuer);
+            Assert.assertTrue(e.getCause() instanceof IdentityOAuth2Exception);
+        }
     }
 
     @AfterTest

@@ -601,7 +601,9 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
     private void validateTokenIssuer(String jwtIssuer, String tenantDomain) throws IdentityOAuth2Exception {
 
         String expectedIssuer = OAuth2Util.getIdTokenIssuer(tenantDomain);
-        if (!StringUtils.equals(expectedIssuer, jwtIssuer)) {
+        // Tokens issued before FAPI 2.0 was enabled for the tenant carry the resident IdP entity ID.
+        if (!StringUtils.equals(expectedIssuer, jwtIssuer)
+                && !StringUtils.equals(OAuth2Util.getResidentIdpEntityId(tenantDomain), jwtIssuer)) {
             handleException(TokenExchangeConstants.INVALID_TARGET, "Invalid issuer values provided");
         }
     }
