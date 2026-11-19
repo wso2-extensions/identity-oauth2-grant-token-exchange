@@ -33,6 +33,7 @@ import org.testng.annotations.BeforeTest;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
+import org.wso2.carbon.identity.application.common.model.ClaimMapping;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.application.common.model.IdentityProviderProperty;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
@@ -40,9 +41,11 @@ import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ClientException;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenReqDTO;
+import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenRespDTO;
 import org.wso2.carbon.identity.oauth2.grant.token.exchange.utils.TokenExchangeUtils;
 import org.wso2.carbon.identity.oauth2.model.RequestParameter;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
+import org.wso2.carbon.identity.oauth2.util.ClaimsUtil;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.identity.organization.management.service.util.OrganizationManagementUtil;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
@@ -67,6 +70,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ACTOR_SUBJECT;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.EXISTING_ACT_CLAIM;
@@ -852,6 +856,52 @@ public class TokenExchangeGrantHandlerTest {
         tokenExchangeUtils.when(() -> TokenExchangeUtils.setAuthorizedUserForImpersonation(
                         Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.any(), Mockito.anyString()))
                 .thenAnswer(invocation -> null);
+    }
+
+    @Test(description = "An error response, e.g. from a failed pre issue access token action, is returned as it is")
+    public void testCompleteTokenResponseReturnsErrorResponseWithoutCachingUserAttributes() throws Exception {
+
+        OAuth2AccessTokenRespDTO errorResponse = new OAuth2AccessTokenRespDTO();
+        errorResponse.setError(true);
+        errorResponse.setErrorCode("access_denied");
+        errorResponse.setErrorMsg("Not entitled");
+
+        try (MockedStatic<ClaimsUtil> claimsUtil = mockStatic(ClaimsUtil.class)) {
+            OAuth2AccessTokenRespDTO response = completeTokenResponse(errorResponse);
+
+            Assert.assertSame(response, errorResponse);
+            Assert.assertEquals(response.getErrorCode(), "access_denied");
+            Assert.assertNull(response.getParameter(Constants.TokenExchangeConstants.ISSUED_TOKEN_TYPE));
+            claimsUtil.verify(() -> ClaimsUtil.addUserAttributesToCache(any(), any(), any()), never());
+        }
+    }
+
+    @Test(description = "A successful response caches the user attributes and carries the issued token type")
+    public void testCompleteTokenResponseCachesUserAttributesForIssuedToken() throws Exception {
+
+        OAuth2AccessTokenRespDTO tokenResponse = new OAuth2AccessTokenRespDTO();
+        tokenResponse.setAccessToken("access-token");
+
+        try (MockedStatic<ClaimsUtil> claimsUtil = mockStatic(ClaimsUtil.class)) {
+            OAuth2AccessTokenRespDTO response = completeTokenResponse(tokenResponse);
+
+            Assert.assertSame(response, tokenResponse);
+            Assert.assertTrue(response.getParameters().containsKey(Constants.TokenExchangeConstants.ISSUED_TOKEN_TYPE));
+            claimsUtil.verify(() -> ClaimsUtil.addUserAttributesToCache(eq(tokenResponse), any(), any()));
+        }
+    }
+
+    private OAuth2AccessTokenRespDTO completeTokenResponse(OAuth2AccessTokenRespDTO issuedResponse) throws Exception {
+
+        AuthenticatedUser user = new AuthenticatedUser();
+        user.setFederatedUser(true);
+        Map<ClaimMapping, String> userAttributes = new HashMap<>();
+        userAttributes.put(ClaimMapping.build("email", "email", null, false), "alice@example.com");
+        user.setUserAttributes(userAttributes);
+        OAuthTokenReqMessageContext messageContext = new OAuthTokenReqMessageContext(new OAuth2AccessTokenReqDTO());
+        messageContext.setAuthorizedUser(user);
+
+        return new TokenExchangeGrantHandler().completeTokenResponse(issuedResponse, messageContext, user);
     }
 
     @DataProvider(name = "fapi2IssuerData")
