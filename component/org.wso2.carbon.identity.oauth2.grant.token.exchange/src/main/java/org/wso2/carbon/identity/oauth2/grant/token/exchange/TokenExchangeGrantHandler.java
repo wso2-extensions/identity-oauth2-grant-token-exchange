@@ -870,6 +870,25 @@ public class TokenExchangeGrantHandler extends AbstractAuthorizationGrantHandler
             }
         }
         OAuth2AccessTokenRespDTO tokenRespDTO = super.issue(tokReqMsgCtx);
+        return completeTokenResponse(tokenRespDTO, tokReqMsgCtx, user);
+    }
+
+    /**
+     * Cache the user attributes against the issued token and add the issued token type to the response.
+     * An error response, where no token was issued (e.g. the pre issue access token action failed the request),
+     * is returned as it is.
+     *
+     * @param tokenRespDTO Token response from the default grant handler flow.
+     * @param tokReqMsgCtx Token request message context.
+     * @param user         Authorized user of the request.
+     * @return Token response.
+     */
+    OAuth2AccessTokenRespDTO completeTokenResponse(OAuth2AccessTokenRespDTO tokenRespDTO,
+                                                   OAuthTokenReqMessageContext tokReqMsgCtx, AuthenticatedUser user) {
+
+        if (tokenRespDTO.isError()) {
+            return tokenRespDTO;
+        }
         Map<ClaimMapping, String> userAttributes = user.getUserAttributes();
         if (MapUtils.isNotEmpty(userAttributes)) {
             ClaimsUtil.addUserAttributesToCache(tokenRespDTO, tokReqMsgCtx, userAttributes);
